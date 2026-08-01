@@ -58,8 +58,11 @@ rv_param_table <- function() {
     p("p_full", "Fully vaccinated (%)", "Vaccination uptake",
       70.7, 0, 100, 0.1, 65.7, 75.7,
       "Sederdahl et al. Pediatrics 2019; range +/-5 percentage points"),
+    # Written as the quotient rather than a rounded literal: the spreadsheet
+    # carries this to full precision (cell H16), and rounding it to 33.39 moves
+    # the ED baseline by enough to break the regression check against K60.
     p("w_partial1", "Share of partially vaccinated with 1 dose (%)", "Vaccination uptake",
-      33.39, 0, 100, 0.1, 20, 50,
+      100 * 162196 / (162196 + 323558), 0, 100, 0.1, 20, 50,
       "Person-time split in Butler et al. 2021 Table 1: 162196/(162196+323558)"),
 
     # -- 2-year risk of AGE-related hospitalization, % -------------------------
@@ -97,8 +100,12 @@ rv_param_table <- function() {
     p("c_ed", "Direct medical cost per ED visit ($)", "Unit costs",
       781.83, 0, 4000, 1, 586.37, 977.29,
       "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%"),
+    # As above, kept as the underlying expression (spreadsheet "Indirect costs"
+    # cell N45 = H45 + P24): $1,117 weekly earnings over a 7-day week, two days
+    # of it, plus $104.64 of median out-of-pocket costs. Rounding to 423.7829
+    # shifts baseline expenditures by $123 against a $1 tolerance.
     p("c_indirect", "Indirect (productivity) cost per episode ($)", "Unit costs",
-      423.7829, 0, 2000, 1, 317.84, 529.73,
+      1117 / 7 * 2 + 104.64, 0, 2000, 1, 317.84, 529.73,
       paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk) plus",
             "out-of-pocket costs; applied identically to ED and inpatient",
             "episodes; range +/-25%"))
