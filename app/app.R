@@ -270,6 +270,82 @@ server <- function(input, output, session) {
       societal = societal(), cohorts = cohorts())
   })
 
+  # Prefill buttons. `local()` captures the scenario name per iteration; without
+  # it every observer would close over the final value of `nm`.
+  for (nm in names(SCEN)) local({
+    scen_name <- nm
+    btn <- paste0("fill_", sub("%", "", scen_name))
+    observeEvent(input[[btn]], {
+      v <- SCEN[[scen_name]]
+      for (k in seq_len(nrow(GROUPS))) {
+        updateNumericInput(session, paste0("scen_", GROUPS$id[k]), value = v[k])
+      }
+    }, ignoreInit = TRUE)
+  })
+
+  observeEvent(input$reset, {
+    for (k in seq_len(nrow(GROUPS))) {
+      updateNumericInput(session, paste0("cur_",  GROUPS$id[k]), value = GROUPS$share[k])
+      updateNumericInput(session, paste0("scen_", GROUPS$id[k]), value = SCEN_DEFAULT[k])
+      updateNumericInput(session, paste0("rh_",   GROUPS$id[k]), value = GROUPS$risk_h[k])
+      updateNumericInput(session, paste0("re_",   GROUPS$id[k]), value = GROUPS$risk_e[k])
+    }
+    for (i in seq_len(nrow(SCALARS))) {
+      updateSliderInput(session, SCALARS$id[i], value = SCALARS$default[i])
+    }
+    updateRadioButtons(session, "perspective", selected = "societal")
+    updateNumericInput(session, "cohorts", value = 1)
+  })
+
+  sum_badge <- function(total) {
+    off <- abs(total - 100) > 0.05
+    span(class = paste("grid-sum", if (off) "warn" else ""),
+      sprintf("sums to %.1f%%", total))
+  }
+
+  output$sum_cur  <- renderUI(sum_badge(sum(gvals()$share)))
+  output$sum_scen <- renderUI(sum_badge(sum(scen_share())))
+
+  # Cell id -> human label, for naming blanks in the banner.
+  CELL_LABELS <- local({
+    prefixes <- c(cur = "current %", scen = "scenario %",
+                  rh = "hospitalization risk", re = "ED risk")
+    ids <- character(0); labs <- character(0)
+    for (p in names(prefixes)) {
+      for (k in seq_len(nrow(GROUPS))) {
+        ids  <- c(ids,  paste0(p, "_", GROUPS$id[k]))
+        labs <- c(labs, paste0(GROUPS$label[k], " — ", prefixes[[p]]))
+      }
+    }
+    stats::setNames(labs, ids)
+  })
+
+  output$warn <- renderUI({
+    msgs <- list()
+
+    blank <- names(CELL_LABELS)[vapply(names(CELL_LABELS), function(i) {
+      v <- input[[i]]
+      !is.null(v) && (length(v) != 1 || is.na(v))
+    }, logical(1))]
+    if (length(blank)) {
+      msgs <- c(msgs, list(sprintf("Empty, treated as 0: %s.",
+        paste(CELL_LABELS[blank], collapse = "; "))))
+    }
+
+    r <- res()
+    for (nm in c("Current", "Scenario")) {
+      tot <- if (nm == "Current") r$share_sum_base else r$share_sum_scen
+      if (abs(tot - 100) > 0.05) {
+        msgs <- c(msgs, list(sprintf(
+          "%s shares sum to %.1f%%, not 100%%. The published values (13.9 / 15.3 / 70.7) sum to 99.9%% because of rounding; leaving this uncorrected reproduces the spreadsheet exactly.",
+          nm, tot)))
+      }
+    }
+
+    if (!length(msgs)) return(NULL)
+    div(class = "alert alert-warning py-2 small", lapply(msgs, tags$div))
+  })
+
   # -- Value boxes -------------------------------------------------------------
   output$vb_hosp <- renderText(fmt_n(res()$excess$hosp))
   output$vb_ed   <- renderText(fmt_n(res()$excess$ed))
