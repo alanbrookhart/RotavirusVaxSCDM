@@ -10,7 +10,10 @@
 # accompanying Butler, Panozzo, Boutzoukas & Brookhart, "Rotavirus Vaccination:
 # Impact of New Recommendation."
 #
-# Structure of the calculation, for each vaccination stratum s:
+# Structure of the calculation, for each vaccination stratum s, evaluated once
+# under the current uptake distribution and once under a scenario distribution
+# supplied directly by the reader (typed uptake percentages, not a derived
+# shift from a single slider):
 #
 #   events_s = births * share_s * risk_s
 #   cost     = sum_s(hosp_s) * unit_cost_hosp + sum_s(ed_s) * unit_cost_ed
@@ -18,93 +21,67 @@
 # where risk_s is the 2-year cumulative incidence of the outcome from Butler et
 # al. (Epidemiology 2021) and unit costs are per-episode costs in 2025 USD, taken
 # either from a direct-medical or a societal (direct + indirect) perspective.
+# Excess burden and expenditure are the scenario totals minus the baseline
+# totals.
 #
 # The model is deterministic and accounts for direct effects of vaccination only;
 # no indirect (herd) protection is assumed, consistent with the published letter.
 # ------------------------------------------------------------------------------
 
 
-# --- Parameter registry -------------------------------------------------------
-# One row per varyable parameter. This table is the single source of truth: the
-# app builds its sliders from it and the tornado analysis takes its low/high
-# bounds from it. `low` and `high` are the published 95% confidence limits where
-# available and plausible ranges otherwise (see `source` column).
+# --- Group registry -----------------------------------------------------------
+# One row per vaccination stratum. `share`, `risk_h` and `risk_e` are the values
+# the app puts in editable cells; the `_lo`/`_hi` columns are the published 95%
+# confidence limits, retained for the sensitivity analysis planned as follow-up
+# work even though nothing consumes them in this revision.
+#
+# The two partial-series shares are the person-time split from Butler et al.
+# 2021 Table 1, 162196/(162196+323558) = 33.3906% of the 15.3% partially
+# vaccinated. Displayed to six decimals: they sum to 15.3 exactly and land
+# within $0.43 of the spreadsheet's baseline expenditure.
 
-rv_param_table <- function() {
-  p <- function(id, label, group, default, min, max, step, low, high, source) {
-    data.frame(
-      id = id, label = label, group = group,
-      default = default, min = min, max = max, step = step,
-      low = low, high = high, source = source,
-      stringsAsFactors = FALSE
-    )
+rv_groups <- function() {
+  data.frame(
+    id        = c("unvax", "p1", "p2", "full"),
+    label     = c("Unvaccinated", "Partial RV5 (1 dose)",
+                  "Partial RV5 (2 doses)", "Full series"),
+    share     = c(13.9, 5.108756, 10.191244, 70.7),
+    risk_h    = c(0.88, 0.80, 0.61, 0.47),
+    risk_e    = c(4.36, 4.57, 4.23, 3.15),
+    risk_h_lo = c(0.79, 0.62, 0.52, 0.45),
+    risk_h_hi = c(0.97, 1.02, 0.71, 0.49),
+    risk_e_lo = c(4.17, 4.04, 3.95, 3.09),
+    risk_e_hi = c(4.57, 5.16, 4.54, 3.21),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+# --- Scalar registry ----------------------------------------------------------
+# Population and cost assumptions, which remain sliders. `low`/`high` are the
+# plausible ranges, retained for the same reason as the group bounds above.
+
+rv_scalars <- function() {
+  s <- function(id, label, default, min, max, step, low, high, source) {
+    data.frame(id = id, label = label, default = default,
+      min = min, max = max, step = step, low = low, high = high,
+      source = source, stringsAsFactors = FALSE)
   }
 
   do.call(rbind, list(
-
-    # -- Population ------------------------------------------------------------
-    p("births", "Annual U.S. births", "Population",
-      3622673, 3000000, 4200000, 1000,
-      3441539, 3803807,
+    s("births", "Annual U.S. births",
+      3622673, 3000000, 4200000, 1000, 3441539, 3803807,
       "CDC Vital Statistics Rapid Release No. 38 (provisional 2024); range +/-5%"),
-
-    # -- Uptake ----------------------------------------------------------------
-    p("p_unvax", "Unvaccinated (%)", "Vaccination uptake",
-      13.9, 0, 100, 0.1, 8.9, 18.9,
-      "Sederdahl et al. Pediatrics 2019; range +/-5 percentage points"),
-    p("p_partial", "Partially vaccinated (%)", "Vaccination uptake",
-      15.3, 0, 100, 0.1, 10.3, 20.3,
-      "Sederdahl et al. Pediatrics 2019; range +/-5 percentage points"),
-    p("p_full", "Fully vaccinated (%)", "Vaccination uptake",
-      70.7, 0, 100, 0.1, 65.7, 75.7,
-      "Sederdahl et al. Pediatrics 2019; range +/-5 percentage points"),
-    # Written as the quotient rather than a rounded literal: the spreadsheet
-    # carries this to full precision (cell H16), and rounding it to 33.39 moves
-    # the ED baseline by enough to break the regression check against K60.
-    p("w_partial1", "Share of partially vaccinated with 1 dose (%)", "Vaccination uptake",
-      100 * 162196 / (162196 + 323558), 0, 100, 0.1, 20, 50,
-      "Person-time split in Butler et al. 2021 Table 1: 162196/(162196+323558)"),
-
-    # -- 2-year risk of AGE-related hospitalization, % -------------------------
-    p("rh_unvax", "Hospitalization risk, unvaccinated (%)", "Hospitalization risk",
-      0.88, 0, 3, 0.01, 0.79, 0.97,
-      "Butler et al. 2021 Table 1 (95% CI)"),
-    p("rh_p1", "Hospitalization risk, 1 dose RV5 (%)", "Hospitalization risk",
-      0.80, 0, 3, 0.01, 0.62, 1.02,
-      "Butler et al. 2021 Table 1 (95% CI)"),
-    p("rh_p2", "Hospitalization risk, 2 doses RV5 (%)", "Hospitalization risk",
-      0.61, 0, 3, 0.01, 0.52, 0.71,
-      "Butler et al. 2021 Table 1 (95% CI)"),
-    p("rh_full", "Hospitalization risk, full series (%)", "Hospitalization risk",
-      0.47, 0, 3, 0.01, 0.45, 0.49,
-      "Butler et al. 2021 Table 1 (95% CI)"),
-
-    # -- 2-year risk of AGE-related ED visit, % --------------------------------
-    p("re_unvax", "ED visit risk, unvaccinated (%)", "ED visit risk",
-      4.36, 0, 12, 0.01, 4.17, 4.57,
-      "Butler et al. 2021 Table 2 (95% CI)"),
-    p("re_p1", "ED visit risk, 1 dose RV5 (%)", "ED visit risk",
-      4.57, 0, 12, 0.01, 4.04, 5.16,
-      "Butler et al. 2021 Table 2 (95% CI)"),
-    p("re_p2", "ED visit risk, 2 doses RV5 (%)", "ED visit risk",
-      4.23, 0, 12, 0.01, 3.95, 4.54,
-      "Butler et al. 2021 Table 2 (95% CI)"),
-    p("re_full", "ED visit risk, full series (%)", "ED visit risk",
-      3.15, 0, 12, 0.01, 3.09, 3.21,
-      "Butler et al. 2021 Table 2 (95% CI)"),
-
-    # -- Unit costs, 2025 USD --------------------------------------------------
-    p("c_hosp", "Direct medical cost per hospitalization ($)", "Unit costs",
+    s("c_hosp", "Direct medical cost per hospitalization ($)",
       19251.56, 0, 60000, 10, 14438.67, 24064.45,
       "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%"),
-    p("c_ed", "Direct medical cost per ED visit ($)", "Unit costs",
+    s("c_ed", "Direct medical cost per ED visit ($)",
       781.83, 0, 4000, 1, 586.37, 977.29,
       "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%"),
-    # As above, kept as the underlying expression (spreadsheet "Indirect costs"
-    # cell N45 = H45 + P24): $1,117 weekly earnings over a 7-day week, two days
-    # of it, plus $104.64 of median out-of-pocket costs. Rounding to 423.7829
-    # shifts baseline expenditures by $123 against a $1 tolerance.
-    p("c_indirect", "Indirect (productivity) cost per episode ($)", "Unit costs",
+    # Kept as the underlying expression (spreadsheet "Indirect costs" cell
+    # N45 = H45 + P24): $1,117 weekly earnings over a 7-day week, two days of
+    # it, plus $104.64 of median out-of-pocket costs.
+    s("c_indirect", "Indirect (productivity) cost per episode ($)",
       1117 / 7 * 2 + 104.64, 0, 2000, 1, 317.84, 529.73,
       paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk) plus",
             "out-of-pocket costs; applied identically to ED and inpatient",
@@ -113,60 +90,71 @@ rv_param_table <- function() {
 }
 
 
-# --- Defaults -----------------------------------------------------------------
-
-rv_defaults <- function() {
-  tab <- rv_param_table()
+rv_scalar_defaults <- function() {
+  tab <- rv_scalars()
   stats::setNames(as.list(tab$default), tab$id)
 }
 
 
-#' Project AGE burden and cost under a given uptake distribution
+# --- Published scenario columns -----------------------------------------------
+# Derived from the current column rather than transcribed, so the two cannot
+# drift apart. Matches spreadsheet rows J23-J26, J31-J34 and J41-J44: the shift
+# moves percentage points from the full series into unvaccinated, holding both
+# partial strata fixed.
+
+rv_scenarios <- function() {
+  base <- rv_groups()$share
+  mk <- function(pp) {
+    v <- base
+    v[1] <- v[1] + pp
+    v[4] <- v[4] - pp
+    v
+  }
+  list("10%" = mk(10), "20%" = mk(20), "30%" = mk(30))
+}
+
+
+# --- Input coercion -----------------------------------------------------------
+# NULL means the input has not initialised yet, so fall back to the default. NA
+# means the user cleared the box, which reads as zero: substituting the default
+# would fight them mid-typing, and leaving NA propagates into plot limits and
+# crashes the render.
+
+rv_num <- function(x, default = 0) {
+  if (is.null(x)) return(default)
+  if (length(x) != 1 || is.na(x) || !is.finite(x)) return(0)
+  as.numeric(x)
+}
+
+
+#' Project AGE burden and cost under two uptake distributions
 #'
-#' @param p        Named list of parameters (see `rv_param_table`). Percentages
-#'                 are supplied on the 0-100 scale.
-#' @param shift    Percentage points of the birth cohort moving from fully
-#'                 vaccinated to unvaccinated. Clamped at the fully vaccinated
-#'                 share.
-#' @param societal If TRUE, unit costs include indirect (productivity) costs;
-#'                 if FALSE, direct medical costs only.
-#' @param cohorts  Number of consecutive annual birth cohorts. Estimates are
-#'                 additive across cohorts, so this is a simple multiplier.
-#' @param normalize If TRUE, uptake shares are rescaled to sum to 100%. The
-#'                 published shares sum to 99.9% because of rounding; leaving
-#'                 this FALSE reproduces the spreadsheet exactly.
+#' @param groups     Data frame shaped like `rv_groups()`. Only `share`,
+#'                   `risk_h`, `risk_e` and `label` are read. Percentages are on
+#'                   the 0-100 scale.
+#' @param scen_share Numeric vector of scenario shares (0-100), in group order.
+#' @param scalars    Named list of scalar parameters (see `rv_scalar_defaults`).
+#' @param societal   If TRUE, unit costs include indirect (productivity) costs;
+#'                   if FALSE, direct medical costs only.
+#' @param cohorts    Number of consecutive annual birth cohorts. Estimates are
+#'                   additive across cohorts, so this is a simple multiplier.
 #'
 #' @return A list with `strata` (per-stratum detail under both distributions),
 #'   `baseline`, `scenario` and `excess` summaries.
-rv_project <- function(p, shift = 0, societal = TRUE, cohorts = 1,
-                       normalize = FALSE) {
+rv_project <- function(groups, scen_share, scalars, societal = TRUE,
+                       cohorts = 1) {
 
-  shares <- c(
-    unvax = p$p_unvax,
-    p1    = p$p_partial * p$w_partial1 / 100,
-    p2    = p$p_partial * (1 - p$w_partial1 / 100),
-    full  = p$p_full
-  ) / 100
+  base_share <- groups$share / 100
+  scen_share <- as.numeric(scen_share) / 100
+  risk_h <- groups$risk_h / 100
+  risk_e <- groups$risk_e / 100
 
-  if (normalize && sum(shares) > 0) shares <- shares / sum(shares)
-
-  # Shift moves people from the fully vaccinated stratum into the unvaccinated
-  # stratum; partially vaccinated strata are untouched, as in the spreadsheet.
-  shift_eff <- min(shift / 100, shares[["full"]])
-  shares_s <- shares
-  shares_s[["full"]]  <- shares_s[["full"]]  - shift_eff
-  shares_s[["unvax"]] <- shares_s[["unvax"]] + shift_eff
-
-  risk_h <- c(unvax = p$rh_unvax, p1 = p$rh_p1, p2 = p$rh_p2, p3 = p$rh_full) / 100
-  risk_e <- c(unvax = p$re_unvax, p1 = p$re_p1, p2 = p$re_p2, p3 = p$re_full) / 100
-  names(risk_h) <- names(risk_e) <- names(shares)
-
-  unit_h <- p$c_hosp + if (isTRUE(societal)) p$c_indirect else 0
-  unit_e <- p$c_ed   + if (isTRUE(societal)) p$c_indirect else 0
+  unit_h <- scalars$c_hosp + if (isTRUE(societal)) scalars$c_indirect else 0
+  unit_e <- scalars$c_ed   + if (isTRUE(societal)) scalars$c_indirect else 0
 
   summarise <- function(sh) {
-    hosp <- p$births * sh * risk_h * cohorts
-    ed   <- p$births * sh * risk_e * cohorts
+    hosp <- scalars$births * sh * risk_h * cohorts
+    ed   <- scalars$births * sh * risk_e * cohorts
     list(
       shares = sh,
       hosp = hosp, ed = ed,
@@ -177,12 +165,13 @@ rv_project <- function(p, shift = 0, societal = TRUE, cohorts = 1,
     )
   }
 
-  b <- summarise(shares)
-  s <- summarise(shares_s)
+  b <- summarise(base_share)
+  s <- summarise(scen_share)
+
+  pct <- function(scen, base) if (isTRUE(base > 0)) 100 * (scen - base) / base else NA_real_
 
   strata <- data.frame(
-    stratum = c("Unvaccinated", "Partial RV5 (1 dose)",
-                "Partial RV5 (2 doses)", "Full series"),
+    stratum = groups$label,
     share_base = 100 * b$shares,
     share_scen = 100 * s$shares,
     hosp_base = b$hosp, hosp_scen = s$hosp,
@@ -196,8 +185,8 @@ rv_project <- function(p, shift = 0, societal = TRUE, cohorts = 1,
     strata = strata,
     unit_cost_hosp = unit_h,
     unit_cost_ed = unit_e,
-    shift_applied = 100 * shift_eff,
-    share_sum = 100 * sum(shares),
+    share_sum_base = 100 * sum(base_share),
+    share_sum_scen = 100 * sum(scen_share),
     baseline = b,
     scenario = s,
     excess = list(
@@ -206,86 +195,11 @@ rv_project <- function(p, shift = 0, societal = TRUE, cohorts = 1,
       cost_hosp = s$cost_hosp - b$cost_hosp,
       cost_ed   = s$cost_ed - b$cost_ed,
       cost_total = s$cost_total - b$cost_total,
-      pct_hosp = 100 * (s$hosp_total - b$hosp_total) / b$hosp_total,
-      pct_ed   = 100 * (s$ed_total - b$ed_total) / b$ed_total
+      pct_hosp = pct(s$hosp_total, b$hosp_total),
+      pct_ed   = pct(s$ed_total, b$ed_total),
+      pct_cost = pct(s$cost_total, b$cost_total)
     )
   )
-}
-
-
-#' Extract a single scalar outcome from a projection
-rv_outcome <- function(res, outcome) {
-  switch(outcome,
-    excess_hosp = res$excess$hosp,
-    excess_ed   = res$excess$ed,
-    excess_cost = res$excess$cost_total,
-    total_hosp  = res$scenario$hosp_total,
-    total_ed    = res$scenario$ed_total,
-    total_cost  = res$scenario$cost_total,
-    stop("Unknown outcome: ", outcome)
-  )
-}
-
-rv_outcome_choices <- c(
-  "Excess hospitalizations"      = "excess_hosp",
-  "Excess ED visits"             = "excess_ed",
-  "Excess expenditures ($)"      = "excess_cost",
-  "Total hospitalizations"       = "total_hosp",
-  "Total ED visits"              = "total_ed",
-  "Total expenditures ($)"       = "total_cost"
-)
-
-
-#' One-way sensitivity analysis over a single parameter
-#'
-#' @param param_id Parameter to vary.
-#' @param values   Values to evaluate; defaults to a 41-point grid spanning the
-#'                 parameter's low/high bounds.
-rv_oneway <- function(p, param_id, outcome = "excess_cost", shift = 10,
-                      societal = TRUE, cohorts = 1, normalize = FALSE,
-                      values = NULL, n = 41) {
-  tab <- rv_param_table()
-  row <- tab[tab$id == param_id, ]
-  if (is.null(values)) values <- seq(row$low, row$high, length.out = n)
-
-  y <- vapply(values, function(v) {
-    pp <- p
-    pp[[param_id]] <- v
-    rv_outcome(rv_project(pp, shift, societal, cohorts, normalize), outcome)
-  }, numeric(1))
-
-  data.frame(value = values, outcome = y)
-}
-
-
-#' Tornado analysis: influence of each parameter at its low/high bound
-rv_tornado <- function(p, outcome = "excess_cost", shift = 10, societal = TRUE,
-                       cohorts = 1, normalize = FALSE, param_ids = NULL) {
-  tab <- rv_param_table()
-  if (!is.null(param_ids)) tab <- tab[tab$id %in% param_ids, ]
-
-  base <- rv_outcome(rv_project(p, shift, societal, cohorts, normalize), outcome)
-
-  eval_at <- function(id, v) {
-    pp <- p; pp[[id]] <- v
-    rv_outcome(rv_project(pp, shift, societal, cohorts, normalize), outcome)
-  }
-
-  out <- data.frame(
-    id = tab$id,
-    label = tab$label,
-    group = tab$group,
-    low_value = tab$low,
-    high_value = tab$high,
-    at_low = vapply(seq_len(nrow(tab)), function(i) eval_at(tab$id[i], tab$low[i]), numeric(1)),
-    at_high = vapply(seq_len(nrow(tab)), function(i) eval_at(tab$id[i], tab$high[i]), numeric(1)),
-    stringsAsFactors = FALSE
-  )
-  out$base <- base
-  out$lower <- pmin(out$at_low, out$at_high)
-  out$upper <- pmax(out$at_low, out$at_high)
-  out$swing <- out$upper - out$lower
-  out[order(out$swing), ]
 }
 
 
