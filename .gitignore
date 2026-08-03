@@ -31,3 +31,6 @@ Thumbs.db
 
 ## Office lock files
 ~$*
+
+## Subagent-driven development scratch
+.superpowers/
