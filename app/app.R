@@ -37,11 +37,16 @@ PAL <- list(
   text   = "#1f2937"
 )
 
-# One editable cell. The grid's header row supplies the labelling, so each
-# numericInput carries no label of its own.
-grid_cell <- function(id, value, step) {
-  tags$td(numericInput(id, label = NULL, value = value, step = step,
-    width = "100%"))
+# One editable cell. The grid's header row supplies the visible labelling, so
+# each numericInput carries no label of its own -- but a suppressed label leaves
+# the input with no accessible name, and a screen reader cannot infer one from
+# the column header. `aria` supplies it. htmltools ships with shiny, so this
+# adds no package to the Shinylive bundle.
+grid_cell <- function(id, value, step, aria) {
+  ni <- numericInput(id, label = NULL, value = value, step = step,
+    width = "100%")
+  ni <- htmltools::tagQuery(ni)$find("input")$addAttrs("aria-label" = aria)$allTags()
+  tags$td(ni)
 }
 
 group_grid <- function() {
@@ -49,10 +54,14 @@ group_grid <- function() {
     g <- GROUPS[i, ]
     tags$tr(
       tags$th(g$label, scope = "row", class = "grid-label"),
-      grid_cell(paste0("cur_",  g$id), g$share,          0.1),
-      grid_cell(paste0("scen_", g$id), SCEN_DEFAULT[i],  0.1),
-      grid_cell(paste0("rh_",   g$id), g$risk_h,         0.01),
-      grid_cell(paste0("re_",   g$id), g$risk_e,         0.01)
+      grid_cell(paste0("cur_",  g$id), g$share,         0.1,
+        paste(g$label, "current percent")),
+      grid_cell(paste0("scen_", g$id), SCEN_DEFAULT[i], 0.1,
+        paste(g$label, "scenario percent")),
+      grid_cell(paste0("rh_",   g$id), g$risk_h,        0.01,
+        paste(g$label, "hospitalization risk percent")),
+      grid_cell(paste0("re_",   g$id), g$risk_e,        0.01,
+        paste(g$label, "ED visit risk percent"))
     )
   })
 
@@ -315,7 +324,9 @@ server <- function(input, output, session) {
   output$sum_cur  <- renderUI(sum_badge(sum(gvals()$share)))
   output$sum_scen <- renderUI(sum_badge(sum(scen_share())))
 
-  # Cell id -> human label, for naming blanks in the banner.
+  # Input id -> human label, for naming blanks in the banner. Covers the sidebar
+  # scalars as well as the grid: `rv_num()` reads a cleared box as 0, so a blank
+  # cost silently zeroes a whole expenditure column and must be reported too.
   CELL_LABELS <- local({
     prefixes <- c(cur = "current %", scen = "scenario %",
                   rh = "hospitalization risk", re = "ED risk")
@@ -326,7 +337,7 @@ server <- function(input, output, session) {
         labs <- c(labs, paste0(GROUPS$label[k], " — ", prefixes[[p]]))
       }
     }
-    stats::setNames(labs, ids)
+    stats::setNames(c(labs, SCALARS$label), c(ids, SCALARS$id))
   })
 
   output$warn <- renderUI({
@@ -341,14 +352,17 @@ server <- function(input, output, session) {
         paste(CELL_LABELS[blank], collapse = "; "))))
     }
 
+    # One sentence naming whichever columns are off, not one per column: at the
+    # published values both are 99.9% and the paragraph would appear twice.
     r <- res()
-    for (nm in c("Current", "Scenario")) {
-      tot <- if (nm == "Current") r$share_sum_base else r$share_sum_scen
-      if (abs(tot - 100) > 0.05) {
-        msgs <- c(msgs, list(sprintf(
-          "%s shares sum to %.1f%%, not 100%%. The published values (13.9 / 15.3 / 70.7) sum to 99.9%% because of rounding; leaving this uncorrected reproduces the spreadsheet exactly.",
-          nm, tot)))
-      }
+    off <- c(
+      if (abs(r$share_sum_base - 100) > 0.05) sprintf("Current (%.1f%%)", r$share_sum_base),
+      if (abs(r$share_sum_scen - 100) > 0.05) sprintf("Scenario (%.1f%%)", r$share_sum_scen)
+    )
+    if (length(off)) {
+      msgs <- c(msgs, list(sprintf(
+        "Shares do not sum to 100%%: %s. The published values (13.9 / 15.3 / 70.7) sum to 99.9%% because of rounding; leaving this uncorrected reproduces the spreadsheet exactly.",
+        paste(off, collapse = " and "))))
     }
 
     if (!length(msgs)) return(NULL)

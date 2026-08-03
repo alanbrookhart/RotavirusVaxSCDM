@@ -85,7 +85,7 @@ The partially vaccinated 15.3% is split into one- and two-dose RV5 recipients at
 
 ## Verification
 
-`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. All six primary targets reproduce to within $1:
+`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. All six primary targets reproduce closely: the four expenditure targets to within $1, and the two encounter counts to within 0.01 encounters.
 
 | Quantity | Model | Spreadsheet |
 | --- | --- | --- |
