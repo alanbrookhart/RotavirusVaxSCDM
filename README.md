@@ -2,7 +2,7 @@
 
 An interactive sensitivity analysis accompanying Butler AM, Panozzo CA, Boutzoukas AE, Brookhart MA, *"Rotavirus Vaccination: Impact of New Recommendation"* (research letter, JAMA Pediatrics, under revision).
 
-The application lets a reader vary every parameter and assumption underlying the published projection — annual births, the vaccination uptake distribution, the two-year risks of AGE-related hospitalization and emergency department visits, the per-episode unit costs, and the magnitude of the shift from routine to shared clinical decision-making — and see immediately how the projected excess burden and expenditures respond.
+The application lets a reader vary every parameter and assumption underlying the published projection — annual births, the vaccination uptake distribution under both the current and a comparison scenario, the two-year risks of AGE-related hospitalization and emergency department visits, and the per-episode unit costs — and see immediately how the projected excess burden and expenditures respond.
 
 It is a Shiny application exported with [Shinylive](https://posit-dev.github.io/r-shinylive/), so R runs in the browser under WebAssembly. The published site is entirely static and requires no Shiny server.
 
@@ -14,6 +14,9 @@ app/
   model.R            The projection model and parameter registry (no Shiny code)
 tests/
   test-model.R       Regression tests against the source spreadsheet
+design/
+  specs/             Design documents
+  plans/             Implementation plans
 build.R              Exports app/ to a static Shinylive site in _site/
 .github/workflows/
   deploy.yml         Builds and publishes to GitHub Pages on push to main
@@ -68,27 +71,27 @@ cost         = Σ hospitalizations × unit_cost_hospitalization
              + Σ ED visits        × unit_cost_ED
 ```
 
-Two-year cumulative incidences come from Butler et al. (*Epidemiology* 2021;32:598–606), estimated with inverse probability of censoring weighting in a commercially insured birth cohort. The scenario moves a specified percentage of the birth cohort from the fully vaccinated to the unvaccinated stratum, holding the partially vaccinated strata fixed; the split of partially vaccinated children into one- and two-dose RV5 recipients is fixed at the person-time ratio in Butler et al. Table 1 (33.4% / 66.6%).
+Two-year cumulative incidences come from Butler et al. (*Epidemiology* 2021;32:598–606), estimated with inverse probability of censoring weighting in a commercially insured birth cohort.
 
-Because only two strata move and the risks are constants, the excess is exactly linear in the shift magnitude. This is worth keeping in mind when reading the sensitivity output: the interesting nonlinearity lies not in the shift but in how the excess scales with the risk difference between the unvaccinated and fully vaccinated strata.
+### Entering a scenario
 
-Estimates account for direct effects of vaccination only. No indirect (herd) protection is assumed, consistent with the letter, so the projections should be read as a lower bound on the excess burden.
+The Current and Scenario columns of the group grid are typed directly, so any pair of uptake distributions can be compared — including scenarios the published letter cannot express, such as children moving into partial vaccination rather than out of it altogether.
 
-### Uptake can be specified two ways
+The **10%**, **20%** and **30%** buttons fill the Scenario column with the published scenarios, which move that many percentage points from the fully vaccinated stratum into the unvaccinated one while holding the partially vaccinated strata fixed. Because only two strata move and the risks are constants, the excess is exactly linear in the shift magnitude.
 
-The **Shift** slider reproduces the published scenarios (10%, 20%, 30% of the cohort moving from fully vaccinated to unvaccinated). Alternatively, the three uptake shares under **Assumptions → Vaccination uptake** can be set directly to any distribution of interest.
+The published shares (13.9% unvaccinated, 15.3% partially vaccinated, 70.7% fully vaccinated) sum to 99.9% because of rounding. The app reports each column's sum but does not correct it: auto-normalising would leave the app unable to reproduce the letter.
 
-The published shares (13.9% unvaccinated, 15.3% partially vaccinated, 70.7% fully vaccinated) sum to 99.9% because of rounding. The app leaves this uncorrected by default so that it reproduces the source spreadsheet exactly, and flags it; a checkbox rescales the shares to sum to 100%.
+The partially vaccinated 15.3% is split into one- and two-dose RV5 recipients at the person-time ratio in Butler et al. Table 1, shown to six decimals as 5.108756% and 10.191244%. That rounding lands within $0.43 of the spreadsheet's baseline expenditure; carrying fewer digits would cost materially more.
 
 ## Verification
 
-`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. All six primary targets reproduce to the cent:
+`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. All six primary targets reproduce to within $1:
 
 | Quantity | Model | Spreadsheet |
 | --- | --- | --- |
 | Baseline hospitalizations (K19) | 20,201.71 | 20,201.71 |
 | Baseline ED visits (K60) | 126,708.41 | 126,708.41 |
-| Baseline expenditures (W23) | $550,236,945.15 | $550,236,945.15 |
+| Baseline expenditures (W23) | $550,236,944.72 | $550,236,945.15 |
 | Excess expenditures, 10% shift (X24) | $34,508,431.45 | $34,508,431.45 |
 | Excess expenditures, 20% shift (X25) | $69,016,862.91 | $69,016,862.91 |
 | Excess expenditures, 30% shift (X26) | $103,525,294.36 | $103,525,294.36 |
@@ -107,19 +110,20 @@ The corresponding matched figures are \$34.5 million (10% shift, societal) and \
 | Parameter | Value | Source |
 | --- | --- | --- |
 | Annual U.S. births | 3,622,673 | CDC Vital Statistics Rapid Release No. 38 (provisional 2024) |
-| Uptake distribution | 13.9 / 15.3 / 70.7 % | Sederdahl et al. *Pediatrics* 2019 |
+| Uptake distribution | 13.9 / 5.108756 / 10.191244 / 70.7 % | Sederdahl et al. *Pediatrics* 2019; partial split from Butler et al. 2021 Table 1 |
 | Two-year hospitalization risks | 0.88 / 0.80 / 0.61 / 0.47 % | Butler et al. *Epidemiology* 2021, Table 1 |
 | Two-year ED visit risks | 4.36 / 4.57 / 4.23 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2 |
 | Cost per hospitalization (direct) | \$19,251.56 | Karve et al. 2014, CPI-inflated to January 2025 |
 | Cost per ED visit (direct) | \$781.83 | Karve et al. 2014, CPI-inflated to January 2025 |
-| Indirect cost per episode | \$423.78 | Two days of median weekly earnings (BLS CPS 2023) plus out-of-pocket costs |
+| Indirect cost per episode | \$423.782857 | Two days of median weekly earnings (BLS CPS 2023, $1,117/wk over a 7-day week) plus $104.64 median out-of-pocket costs |
 
-Tornado bounds use published 95% confidence limits where available and stated plausible ranges otherwise; both appear in the app under **Model & sources**.
+The published 95% confidence limits are retained in `rv_groups()` and `rv_scalars()` as `_lo`/`_hi` columns. Nothing consumes them yet; they are the input for the sensitivity analysis planned as follow-up work.
+
+Annual births remains a `sliderInput`; the three cost parameters (`c_hosp`, `c_ed`, `c_indirect`) are `numericInput`s. This is not cosmetic: `updateSliderInput()` round-trips a value through ionRangeSlider, which rounds it to the decimal count implied by `step`, and with `step >= 1` that is zero decimals — a reset once turned `c_indirect`'s `423.782857142857` into `424` and the app stopped reproducing the source spreadsheet. Typed numeric inputs do not coerce to a step grid, so exact values survive both initial load and reset.
 
 ## Possible extensions
 
-Three features were scoped out of this draft but are straightforward to add, since `rv_project()` already takes the relevant arguments or is easily generalized:
+Two features were scoped out of this draft but are straightforward to add, since `rv_project()` already takes the relevant arguments or is easily generalized:
 
-- **Probabilistic sensitivity analysis.** Draw risks from their reported confidence limits and costs from lognormal distributions, and report medians with 95% intervals. Note that the bootstrap confidence intervals in Butler et al. are marginal, so treating the four stratum-specific risks as independent will overstate the width of the resulting interval.
+- **Sensitivity analysis.** The agreed next piece of work, and the answer to Reviewer #3's request that uncertainty be incorporated into the projections. The confidence limits it needs are already carried in `rv_groups()` and `rv_scalars()`. Note that the bootstrap confidence intervals in Butler et al. are marginal, so treating the four stratum-specific risks as independent will overstate the width of any resulting interval.
 - **Indirect (herd) protection.** A multiplier on risk in the unvaccinated stratum, addressing the first stated limitation. Whether this widens or narrows the excess depends on whether the multiplier is held fixed or allowed to scale with coverage, which is the substantively interesting question.
-- **Multi-cohort projection.** `rv_project(cohorts = n)` already implements this; it needs only a control in the sidebar (one is present but could be surfaced more prominently).
