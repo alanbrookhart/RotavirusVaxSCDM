@@ -72,11 +72,16 @@ group_grid <- function() {
   )
 }
 
-scalar_slider <- function(row) {
+scalar_input <- function(row) {
   tags$div(
     title = row$source,
-    sliderInput(row$id, row$label, min = row$min, max = row$max,
-      value = row$default, step = row$step, ticks = FALSE, width = "100%")
+    if (identical(row$widget, "slider")) {
+      sliderInput(row$id, row$label, min = row$min, max = row$max,
+        value = row$default, step = row$step, ticks = FALSE, width = "100%")
+    } else {
+      numericInput(row$id, row$label, value = row$default, min = row$min,
+        max = row$max, step = row$step, width = "100%")
+    }
   )
 }
 
@@ -123,7 +128,7 @@ ui <- page_navbar(
 
     hr(),
     h6("Population and costs", class = "text-uppercase text-muted mb-1"),
-    lapply(seq_len(nrow(SCALARS)), function(i) scalar_slider(SCALARS[i, ])),
+    lapply(seq_len(nrow(SCALARS)), function(i) scalar_input(SCALARS[i, ])),
 
     actionButton("reset", "Reset to published values",
       class = "btn-outline-secondary btn-sm mt-2")
@@ -291,7 +296,11 @@ server <- function(input, output, session) {
       updateNumericInput(session, paste0("re_",   GROUPS$id[k]), value = GROUPS$risk_e[k])
     }
     for (i in seq_len(nrow(SCALARS))) {
-      updateSliderInput(session, SCALARS$id[i], value = SCALARS$default[i])
+      if (identical(SCALARS$widget[i], "slider")) {
+        updateSliderInput(session, SCALARS$id[i], value = SCALARS$default[i])
+      } else {
+        updateNumericInput(session, SCALARS$id[i], value = SCALARS$default[i])
+      }
     }
     updateRadioButtons(session, "perspective", selected = "societal")
     updateNumericInput(session, "cohorts", value = 1)

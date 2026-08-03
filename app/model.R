@@ -62,22 +62,25 @@ rv_groups <- function() {
 # plausible ranges, retained for the same reason as the group bounds above.
 
 rv_scalars <- function() {
-  s <- function(id, label, default, min, max, step, low, high, source) {
+  s <- function(id, label, default, min, max, step, low, high, source, widget) {
     data.frame(id = id, label = label, default = default,
       min = min, max = max, step = step, low = low, high = high,
-      source = source, stringsAsFactors = FALSE)
+      source = source, widget = widget, stringsAsFactors = FALSE)
   }
 
   do.call(rbind, list(
     s("births", "Annual U.S. births",
       3622673, 3000000, 4200000, 1000, 3441539, 3803807,
-      "CDC Vital Statistics Rapid Release No. 38 (provisional 2024); range +/-5%"),
+      "CDC Vital Statistics Rapid Release No. 38 (provisional 2024); range +/-5%",
+      "slider"),
     s("c_hosp", "Direct medical cost per hospitalization ($)",
       19251.56, 0, 60000, 10, 14438.67, 24064.45,
-      "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%"),
+      "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
+      "numeric"),
     s("c_ed", "Direct medical cost per ED visit ($)",
       781.83, 0, 4000, 1, 586.37, 977.29,
-      "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%"),
+      "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
+      "numeric"),
     # Kept as the underlying expression (spreadsheet "Indirect costs" cell
     # N45 = H45 + P24): $1,117 weekly earnings over a 7-day week, two days of
     # it, plus $104.64 of median out-of-pocket costs.
@@ -85,7 +88,8 @@ rv_scalars <- function() {
       1117 / 7 * 2 + 104.64, 0, 2000, 1, 317.84, 529.73,
       paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk) plus",
             "out-of-pocket costs; applied identically to ED and inpatient",
-            "episodes; range +/-25%"))
+            "episodes; range +/-25%"),
+      "numeric")
   ))
 }
 
