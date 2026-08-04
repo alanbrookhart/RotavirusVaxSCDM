@@ -531,15 +531,34 @@ server <- function(input, output, session) {
       sub("\\.00$", "", s)
     }
     g <- GROUPS
+    # Row counts follow nrow(g) rather than a literal: the number of strata has
+    # changed once already, and a hardcoded count fails only at render time.
+    n <- nrow(g)
+    src <- function(base, blended) ifelse(g$id == "partial", blended, base)
+
     rbind(
       data.frame(
         Parameter = c(paste("Share,", g$label),
                       paste("Hospitalization risk,", g$label),
                       paste("ED visit risk,", g$label)),
         `Published value` = num(c(g$share, g$risk_h, g$risk_e)),
-        Source = c(rep("Sederdahl et al. Pediatrics 2019; partial split from Butler et al. 2021 Table 1", 4),
-                   rep("Butler et al. 2021 Table 1", 4),
-                   rep("Butler et al. 2021 Table 2", 4)),
+        Source = c(
+          rep("Sederdahl et al. Pediatrics 2019", n),
+          src("Butler et al. 2021, Table 1",
+              "Weighted average of the one- and two-dose RV5 levels, Butler et al. 2021 Table 1"),
+          src("Butler et al. 2021, Table 2",
+              "Weighted average of the one- and two-dose RV5 levels, Butler et al. 2021 Table 2")),
+        check.names = FALSE, stringsAsFactors = FALSE),
+      data.frame(
+        Parameter = "One dose, % of partially vaccinated",
+        `Published value` = num(rv_partial_components()$w_default),
+        Source = "Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558)",
+        check.names = FALSE, stringsAsFactors = FALSE),
+      data.frame(
+        Parameter = c("Risk difference, hospitalization", "Risk difference, ED visit"),
+        `Published value` = c("-0.40 (-0.50, -0.31)", "-1.22 (-1.43, -1.00)"),
+        Source = rep(paste("Butler et al. 2021, Table 1 and Table 2;",
+                           "sets the Stronger and Weaker buttons"), 2),
         check.names = FALSE, stringsAsFactors = FALSE),
       data.frame(
         Parameter = SCALARS$label,
