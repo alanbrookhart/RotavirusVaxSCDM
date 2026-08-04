@@ -14,9 +14,6 @@ app/
   model.R            The projection model and parameter registry (no Shiny code)
 tests/
   test-model.R       Regression tests against the source spreadsheet
-design/
-  specs/             Design documents
-  plans/             Implementation plans
 build.R              Exports app/ to a static Shinylive site in _site/
 .github/workflows/
   deploy.yml         Builds and publishes to GitHub Pages on push to main

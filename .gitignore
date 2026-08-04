@@ -34,3 +34,8 @@ Thumbs.db
 
 ## Subagent-driven development scratch
 .superpowers/
+
+## Design spec and implementation plan -- kept locally, not versioned.
+## Note: these were briefly tracked (commit ce1c9a6) and remain retrievable
+## from history; untracking here only stops future changes being versioned.
+design/
