@@ -29,29 +29,71 @@
 # ------------------------------------------------------------------------------
 
 
-# --- Group registry -----------------------------------------------------------
-# One row per vaccination stratum. `share`, `risk_h` and `risk_e` are the values
-# the app puts in editable cells; the `_lo`/`_hi` columns are the published 95%
-# confidence limits, retained for the sensitivity analysis planned as follow-up
-# work even though nothing consumes them in this revision.
+# --- Partially vaccinated: the two RV5 levels ---------------------------------
+# Butler et al. 2021 reports the partially vaccinated as two separate strata,
+# one dose and two doses of the three-dose RV5 series, with distinct risks. The
+# uptake source (Sederdahl et al. 2019) reports only a single lumped 15.3%, so
+# apportioning that 15.3% between the two levels requires an assumption.
 #
-# The two partial-series shares are the person-time split from Butler et al.
-# 2021 Table 1, 162196/(162196+323558) = 33.3906% of the 15.3% partially
-# vaccinated. Displayed to six decimals: they sum to 15.3 exactly and land
-# within $0.43 of the spreadsheet's baseline expenditure.
+# The app therefore carries ONE partially vaccinated stratum whose risks are the
+# share-weighted average of the two levels, with the weight exposed as a single
+# parameter. This is not an approximation: because the model is linear in the
+# stratum shares, a blended stratum reproduces the two-stratum result exactly,
+# for any weight. Verified in test-model.R.
+#
+# The weight has no effect at all on the projected excess. Both partial levels
+# are held fixed between the current and scenario columns, so their contribution
+# cancels in the difference; the weight moves only the baseline.
+#
+# Default weight is the person-time ratio in Butler et al. Table 1,
+# 162196/(162196+323558) = 33.3906%. That is the spreadsheet's assumption. It is
+# worth noting that person-time is not the same quantity as the share of
+# children: a child who remains permanently at one dose contributes one-dose
+# person-time across the whole of follow-up, whereas a child who completes the
+# series contributes only the interdose interval.
 
-rv_groups <- function() {
+rv_partial_components <- function() {
+  list(
+    one_dose  = c(hosp = 0.80, ed = 4.57),   # Butler Table 1/2, partial RV5 x1
+    two_doses = c(hosp = 0.61, ed = 4.23),   # Butler Table 1/2, partial RV5 x2
+    w_default = 100 * 162196 / (162196 + 323558)
+  )
+}
+
+
+#' Share-weighted risks for the combined partially vaccinated stratum
+#'
+#' @param w_pct Percent of the partially vaccinated who received one dose.
+#' @return Named numeric with `hosp` and `ed`, in percent.
+rv_blend_partial <- function(w_pct = rv_partial_components()$w_default) {
+  p <- rv_partial_components()
+  w <- w_pct / 100
+  c(hosp = w * p$one_dose[["hosp"]] + (1 - w) * p$two_doses[["hosp"]],
+    ed   = w * p$one_dose[["ed"]]   + (1 - w) * p$two_doses[["ed"]])
+}
+
+
+# --- Group registry -----------------------------------------------------------
+# One row per vaccination stratum. `share` and the risks are what the app puts
+# in the grid; the `_lo`/`_hi` columns are the published 95% confidence limits.
+#
+# The partially vaccinated row carries NA bounds deliberately. Its risk is a
+# mixture of two estimates, and averaging two confidence limits does not yield a
+# confidence limit for the mixture. The sensitivity analysis that matters uses
+# `rv_rd_bounds()` on the full-series contrast instead.
+
+rv_groups <- function(w_partial1 = rv_partial_components()$w_default) {
+  b <- rv_blend_partial(w_partial1)
   data.frame(
-    id        = c("unvax", "p1", "p2", "full"),
-    label     = c("Unvaccinated", "Partial RV5 (1 dose)",
-                  "Partial RV5 (2 doses)", "Full series"),
-    share     = c(13.9, 5.108756, 10.191244, 70.7),
-    risk_h    = c(0.88, 0.80, 0.61, 0.47),
-    risk_e    = c(4.36, 4.57, 4.23, 3.15),
-    risk_h_lo = c(0.79, 0.62, 0.52, 0.45),
-    risk_h_hi = c(0.97, 1.02, 0.71, 0.49),
-    risk_e_lo = c(4.17, 4.04, 3.95, 3.09),
-    risk_e_hi = c(4.57, 5.16, 4.54, 3.21),
+    id        = c("unvax", "partial", "full"),
+    label     = c("Unvaccinated", "Partially vaccinated", "Full series"),
+    share     = c(13.9, 15.3, 70.7),
+    risk_h    = c(0.88, b[["hosp"]], 0.47),
+    risk_e    = c(4.36, b[["ed"]],   3.15),
+    risk_h_lo = c(0.79, NA, 0.45),
+    risk_h_hi = c(0.97, NA, 0.49),
+    risk_e_lo = c(4.17, NA, 3.09),
+    risk_e_hi = c(4.57, NA, 3.21),
     stringsAsFactors = FALSE
   )
 }
@@ -153,15 +195,15 @@ rv_apply_rd <- function(groups, rd) {
 # --- Published scenario columns -----------------------------------------------
 # Derived from the current column rather than transcribed, so the two cannot
 # drift apart. Matches spreadsheet rows J23-J26, J31-J34 and J41-J44: the shift
-# moves percentage points from the full series into unvaccinated, holding both
-# partial strata fixed.
+# moves percentage points from the full series into unvaccinated, holding the
+# partially vaccinated stratum fixed.
 
 rv_scenarios <- function() {
   base <- rv_groups()$share
   mk <- function(pp) {
     v <- base
     v[1] <- v[1] + pp
-    v[4] <- v[4] - pp
+    v[length(v)] <- v[length(v)] - pp
     v
   }
   list("10%" = mk(10), "20%" = mk(20), "30%" = mk(30))

@@ -38,19 +38,20 @@ check("Zero excess when scenario equals current", b$excess$cost_total, 0, 1e-6)
 # The reproduction proof lives in the "Spreadsheet equivalence" block below: it
 # shows that restoring the unrounded intermediate recovers W23 and X24-X26
 # exactly, so this rounding is the only difference between the two.
-check("Total expenditures, rounded cost", b$baseline$cost_total, 550236524.98, 0.01)
+check("Total expenditures, rounded cost", b$baseline$cost_total, 550236525.40, 0.01)
 
 cat("\nPrefill scenario columns match spreadsheet rows J23-J26 / J31-J34 / J41-J44\n")
 cat(strrep("-", 100), "\n")
 
-# Guards the prefill constants against drift. Partial strata are held fixed.
+# Guards the prefill constants against drift. The partially vaccinated stratum
+# is held fixed.
 prefill <- list(
-  "10%" = c(23.9, 5.108756, 10.191244, 60.7),
-  "20%" = c(33.9, 5.108756, 10.191244, 50.7),
-  "30%" = c(43.9, 5.108756, 10.191244, 40.7)
+  "10%" = c(23.9, 15.3, 60.7),
+  "20%" = c(33.9, 15.3, 50.7),
+  "30%" = c(43.9, 15.3, 40.7)
 )
 for (s in names(prefill)) {
-  for (k in seq_len(4)) {
+  for (k in seq_len(3)) {
     check(sprintf("Prefill %s, %s", s, g$label[k]), scen[[s]][k], prefill[[s]][k], 1e-9)
   }
 }
@@ -97,6 +98,50 @@ check("Rounding shifts the 30% excess by under $100",
   abs(rv_project(g, scen[["30%"]], sc)$excess$cost_total -
       rv_project(g, scen[["30%"]], sc_x)$excess$cost_total) < 100, TRUE, 0)
 
+cat("\nCombined partially vaccinated stratum\n")
+cat(strrep("-", 100), "\n")
+
+# The single blended stratum must reproduce the two-stratum model exactly, for
+# ANY weight -- the model is linear in the shares, so this is an identity, not
+# an approximation. Compare against an explicit four-row build.
+pc <- rv_partial_components()
+two_stratum <- function(w_pct, partial_share = 15.3) {
+  w <- w_pct / 100
+  data.frame(
+    id     = c("unvax", "p1", "p2", "full"),
+    label  = c("Unvaccinated", "Partial 1 dose", "Partial 2 doses", "Full series"),
+    share  = c(13.9, partial_share * w, partial_share * (1 - w), 70.7),
+    risk_h = c(0.88, pc$one_dose[["hosp"]], pc$two_doses[["hosp"]], 0.47),
+    risk_e = c(4.36, pc$one_dose[["ed"]],   pc$two_doses[["ed"]],   3.15),
+    stringsAsFactors = FALSE
+  )
+}
+for (w in c(0, 20, pc$w_default, 50, 100)) {
+  g1 <- rv_groups(w); g2 <- two_stratum(w)
+  s1 <- g1$share; s1[1] <- s1[1] + 30; s1[3] <- s1[3] - 30
+  s2 <- g2$share; s2[1] <- s2[1] + 30; s2[4] <- s2[4] - 30
+  r1 <- rv_project(g1, s1, sc); r2 <- rv_project(g2, s2, sc)
+  check(sprintf("Blend == two strata at w=%.4f%% (baseline cost)", w),
+    r1$baseline$cost_total, r2$baseline$cost_total, 1e-6)
+  check(sprintf("Blend == two strata at w=%.4f%% (excess cost)", w),
+    r1$excess$cost_total, r2$excess$cost_total, 1e-6)
+}
+
+# The weight moves the baseline but cannot move the excess, because the
+# partially vaccinated are held fixed between the two columns.
+exc <- vapply(c(0, 20, 50, 100), function(w) {
+  gg <- rv_groups(w); s <- gg$share; s[1] <- s[1] + 30; s[3] <- s[3] - 30
+  rv_project(gg, s, sc)$excess$cost_total
+}, numeric(1))
+check("Weight has no effect on the excess", diff(range(exc)), 0, 1e-9)
+base <- vapply(c(0, 100), function(w) rv_project(rv_groups(w), rv_groups(w)$share, sc)$baseline$cost_total, numeric(1))
+stopifnot(diff(base) != 0)
+cat(sprintf("Weight does move the baseline (w=0 vs w=100: %s vs %s): OK\n",
+  fmt_usd(base[1]), fmt_usd(base[2])))
+
+check("Default weight is the Butler Table 1 person-time ratio",
+  pc$w_default, 100 * 162196 / (162196 + 323558), 1e-12)
+
 cat("\nRisk-difference sensitivity (Butler Table 1 E18, Table 2 E59)\n")
 cat(strrep("-", 100), "\n")
 
@@ -110,13 +155,14 @@ check("RD upper limit, ED visit",        rdb$upper[["ed"]],   -1.00, 1e-12)
 # unvaccinated and both partial rows untouched, and reproduce the RD exactly.
 g_lo <- rv_apply_rd(g, rdb$lower)
 g_hi <- rv_apply_rd(g, rdb$upper)
-check("Lower bound sets hosp risk", g_lo$risk_h[4], 0.38, 1e-9)
-check("Lower bound sets ED risk",   g_lo$risk_e[4], 2.93, 1e-9)
-check("Upper bound sets hosp risk", g_hi$risk_h[4], 0.57, 1e-9)
-check("Upper bound sets ED risk",   g_hi$risk_e[4], 3.36, 1e-9)
-check("Realised RD equals the limit", g_lo$risk_h[4] - g_lo$risk_h[1], -0.50, 1e-9)
-stopifnot(identical(g_lo$risk_h[1:3], g$risk_h[1:3]),
-          identical(g_lo$risk_e[1:3], g$risk_e[1:3]))
+nf <- nrow(g)   # full series is the last row
+check("Lower bound sets hosp risk", g_lo$risk_h[nf], 0.38, 1e-9)
+check("Lower bound sets ED risk",   g_lo$risk_e[nf], 2.93, 1e-9)
+check("Upper bound sets hosp risk", g_hi$risk_h[nf], 0.57, 1e-9)
+check("Upper bound sets ED risk",   g_hi$risk_e[nf], 3.36, 1e-9)
+check("Realised RD equals the limit", g_lo$risk_h[nf] - g_lo$risk_h[1], -0.50, 1e-9)
+stopifnot(identical(g_lo$risk_h[-nf], g$risk_h[-nf]),
+          identical(g_lo$risk_e[-nf], g$risk_e[-nf]))
 cat("Unvaccinated and partial rows left untouched: OK\n")
 
 # The excess is linear in the risk difference, so the bounds bracket the point
@@ -158,7 +204,7 @@ check("Three cohorts = 3 x one cohort",
 
 # A scenario that moves people into partial rather than out of vaccination --
 # expressible only now that the scenario column is typed rather than derived.
-mixed <- c(18.9, 5.108756, 15.191244, 60.7)
+mixed <- c(18.9, 20.3, 60.7)
 rm_ <- rv_project(g, mixed, sc, societal = TRUE)
 stopifnot(rm_$excess$hosp > 0, rm_$excess$hosp < expected[["10%"]][["hosp"]])
 cat("Mixed scenario (some to partial) yields excess below the all-to-unvax case: OK\n")
@@ -172,7 +218,7 @@ check("rv_num(NaN, 42) reads as zero",              rv_num(NaN, 42), 0, 1e-9)
 check("rv_num(7, 42) passes the value through",     rv_num(7, 42), 7, 1e-9)
 
 # An empty cell must not error: shares of zero are a valid, if degenerate, input.
-gz <- g; gz$share <- c(0, 0, 0, 0)
+gz <- g; gz$share <- rep(0, nrow(g))
 z <- rv_project(gz, gz$share, sc, societal = TRUE)
 stopifnot(z$baseline$hosp_total == 0, is.na(z$excess$pct_hosp))
 cat("All-zero shares produce zero totals and NA percentages without error: OK\n")

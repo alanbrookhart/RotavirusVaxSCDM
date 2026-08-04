@@ -78,59 +78,79 @@ The **10%**, **20%** and **30%** buttons fill the Scenario column with the publi
 
 The published shares (13.9% unvaccinated, 15.3% partially vaccinated, 70.7% fully vaccinated) sum to 99.9% because of rounding. The app reports each column's sum but does not correct it: auto-normalising would leave the app unable to reproduce the letter.
 
-The partially vaccinated 15.3% is split into one- and two-dose RV5 recipients at the person-time ratio in Butler et al. Table 1, shown to six decimals as 5.108756% and 10.191244%. That rounding lands within $0.43 of the spreadsheet's baseline expenditure; carrying fewer digits would cost materially more.
+### The partially vaccinated stratum
+
+Butler et al. report the partially vaccinated as **two** strata — one dose and two doses of the three-dose RV5 series — with distinct two-year risks (0.80% and 0.61% for hospitalization, 4.57% and 4.23% for ED visits). The uptake source, Sederdahl et al., reports only a single lumped 15.3%. Apportioning that 15.3% between the two levels therefore requires an assumption that appears nowhere in the letter.
+
+The app carries **one** partially vaccinated stratum whose risks are the share-weighted average of the two levels, with the weight exposed as a single sidebar parameter, *One dose, % of partially vaccinated*. The two risk cells for that row are shown read-only in the grid because they are derived rather than entered.
+
+**This is not an approximation.** The model is linear in the stratum shares, so a blended stratum reproduces the two-stratum result exactly, for any weight. `tests/test-model.R` asserts the identity at weights of 0, 20, 33.39, 50 and 100% against an explicit four-row build, agreeing to within 1e-6 on both baseline and excess.
+
+Two consequences worth understanding:
+
+- **The weight cannot affect the projected excess at all.** Both partial levels are held fixed between the current and scenario columns, so their contribution cancels in the difference. The test asserts this: across weights from 0 to 100% the excess is invariant to nine decimals. What the weight moves is the *baseline* — from $542.6M at a weight of 0 to $565.6M at 100%, against $550.2M at the default.
+- **Collapsing improved fidelity.** The four-stratum version had to carry the split as two share literals rounded to six decimals (5.108756% and 10.191244%), which left the baseline counts 2e-5 off the spreadsheet. Deriving the blend from the weight is exact, and baseline hospitalizations and ED visits now match cells `K19` and `K60` to within 2e-7.
+
+The default weight is the person-time ratio in Butler et al. Table 1, `162196/(162196+323558)` = 33.3906%, which is what the source spreadsheet assumes. Note that person-time is not the same quantity as the share of children: a child who remains permanently at one dose contributes one-dose person-time across the whole of follow-up, whereas a child who completes the series contributes only the interdose interval. The weight is exposed precisely so that this assumption can be varied rather than buried.
+
+Confidence limits are deliberately **not** carried for this row. Its risk is a mixture of two estimates, and averaging two confidence limits does not produce a confidence limit for the mixture.
+
+### Risk-difference sensitivity
+
+The **Stronger** and **Weaker** buttons set the full-series risks so that the risk difference against unvaccinated equals a 95% confidence limit from Butler et al. — Table 1 cell `E18`, −0.40 (−0.50, −0.31) for hospitalization, and Table 2 cell `E59`, −1.22 (−1.43, −1.00) for ED visits. Both risks move together, and the unvaccinated risk is read from the grid rather than a constant, so an edited reference is honoured.
+
+That contrast is the one Butler et al. actually estimated and bootstrapped, and because the scenario moves people strictly between the full-series and unvaccinated strata, the projected excess is exactly linear in it. A bound on the risk difference therefore maps directly onto a bound on the excess, with no further assumption. At the 30% scenario this gives roughly $79M to $126M around a $103.5M point estimate.
+
+Two caveats. Because the buttons change the full-series risk, they also move the baseline — 70.7% of the cohort sits in that stratum — so the relative-excess percentages shift as well; the interval is not a pure perturbation of the excess. And taking the hospitalization and ED limits together assumes the two err in the same direction, which overstates the width of a joint interval. Present it as a pre-specified bounding analysis rather than a 95% confidence interval.
+
+The source rounds inconsistently here: differencing the rounded risks gives −0.41 and −1.21, where the paper's risk-difference column reports −0.40 and −1.22. The app anchors on the unvaccinated risk, which is the reading that matches setting the risk difference to its limit.
 
 ## Verification
 
-`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. The encounter counts reproduce to within 0.01 encounters. The expenditure figures sit $17 to $420 below the spreadsheet, for one deliberate reason given below.
+`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. The encounter counts reproduce to within 2e-7. The expenditure figures sit $17 to $420 below the spreadsheet, for the one deliberate reason given below.
 
 | Quantity | Model | Spreadsheet |
 | --- | --- | --- |
-| Baseline hospitalizations (K19) | 20,201.71 | 20,201.71 |
-| Baseline ED visits (K60) | 126,708.41 | 126,708.41 |
-| Baseline expenditures (W23) | $550,236,524.98 | $550,236,945.15 |
+| Baseline hospitalizations (K19) | 20,201.714152 | 20,201.714152 |
+| Baseline ED visits (K60) | 126,708.413902 | 126,708.413902 |
+| Baseline expenditures (W23) | $550,236,525.40 | $550,236,945.15 |
 | Excess expenditures, 10% shift (X24) | $34,508,414.69 | $34,508,431.45 |
 | Excess expenditures, 20% shift (X25) | $69,016,829.37 | $69,016,862.91 |
 | Excess expenditures, 30% shift (X26) | $103,525,244.06 | $103,525,294.36 |
 
 ### Why the expenditure figures differ
 
-The indirect cost per episode is a **cost**, so this model rounds it to whole cents: $423.78. The spreadsheet does not. Its cell `Indirect costs!N45` is `=(H45+P24)`, where `H45` is two days of $1,117 weekly earnings taken over a seven-day week — and since seven does not divide 1,117, Excel carries the repeating decimal $423.782857142857… straight into every dollar cell downstream.
+The indirect cost per episode is a **cost**, so this model rounds it to whole cents: $423.78. The spreadsheet does not. Its cell `Indirect costs!N45` is `=(H45+P24)`, where `H45` is two days of $1,117 weekly earnings taken over a seven-day week — and since seven does not divide 1,117, Excel carries the repeating decimal $423.782857142857… into every dollar cell downstream.
 
 Nothing the letter reports moves. Both printed figures are unchanged at $34.5M and $103.5M, footnote d's percentages are identical to four decimals (6.2716% and 18.8147%), and the encounter counts do not involve cost at all.
 
-The equivalence is still proved rather than asserted. `tests/test-model.R` has a "Spreadsheet equivalence" block that restores the unrounded intermediate and checks that `W23` and `X24`–`X26` come back to within $1 — so the rounding is demonstrably the *only* difference between the two. If that block ever fails, the model and the spreadsheet have genuinely diverged.
+The equivalence is proved rather than asserted. `tests/test-model.R` has a *Spreadsheet equivalence* block that restores the unrounded intermediate and checks that `W23` and `X24`–`X26` come back to within $1 — so the rounding is demonstrably the only difference. If that block ever fails, the model and the spreadsheet have genuinely diverged.
 
 Rounding `N45` to two decimals in the spreadsheet would remove the discrepancy at source, and would change the published 30% figure from $103,525,294 to $103,525,244 — still $103.5M.
 
-### One discrepancy worth resolving before resubmission
-
-The letter reports **\$32.0 million** for a 10% shift and **\$103.5 million** for a 30% shift. These are not on the same footing:
-
-- \$32.0 million is the excess under a **direct medical** perspective (the model gives \$32,021,364).
-- \$103.5 million is the excess under a **societal** perspective (direct plus indirect costs).
-
-The corresponding matched figures are \$34.5 million (10% shift, societal) and \$96.1 million (30% shift, direct medical). Since the Methods section states that costs were defined from a societal perspective, the 10% figure appears to be the one that needs updating, to \$34.5 million. The app's cost-perspective control reproduces either convention.
 
 ## Parameter sources
 
 | Parameter | Value | Source |
 | --- | --- | --- |
 | Annual U.S. births | 3,622,673 | CDC Vital Statistics Rapid Release No. 38 (provisional 2024) |
-| Uptake distribution | 13.9 / 5.108756 / 10.191244 / 70.7 % | Sederdahl et al. *Pediatrics* 2019; partial split from Butler et al. 2021 Table 1 |
-| Two-year hospitalization risks | 0.88 / 0.80 / 0.61 / 0.47 % | Butler et al. *Epidemiology* 2021, Table 1 |
-| Two-year ED visit risks | 4.36 / 4.57 / 4.23 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2 |
+| Uptake distribution | 13.9 / 15.3 / 70.7 % | Sederdahl et al. *Pediatrics* 2019 |
+| One dose, % of partially vaccinated | 33.390564 | Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558) |
+| Two-year hospitalization risks | 0.88 / 0.673442 / 0.47 % | Butler et al. *Epidemiology* 2021, Table 1; middle value is the weighted blend of 0.80 and 0.61 |
+| Two-year ED visit risks | 4.36 / 4.343528 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2; middle value is the weighted blend of 4.57 and 4.23 |
+| Risk difference, full series vs unvaccinated | −0.40 (−0.50, −0.31) hosp; −1.22 (−1.43, −1.00) ED | Butler et al. 2021, Table 1 `E18` and Table 2 `E59`; drives the Stronger/Weaker buttons |
 | Cost per hospitalization (direct) | \$19,251.56 | Karve et al. 2014, CPI-inflated to January 2025 |
 | Cost per ED visit (direct) | \$781.83 | Karve et al. 2014, CPI-inflated to January 2025 |
 | Indirect cost per episode | \$423.78 | Two days of median weekly earnings (BLS CPS 2023, $1,117/wk over a 7-day week) plus $104.64 median out-of-pocket costs, rounded to cents |
 
-The published 95% confidence limits are retained in `rv_groups()` and `rv_scalars()` as `_lo`/`_hi` columns. Nothing consumes them yet; they are the input for the sensitivity analysis planned as follow-up work.
+The published 95% confidence limits on the individual risks are retained in `rv_groups()` and `rv_scalars()` as `_lo`/`_hi` columns. Nothing consumes them: the sensitivity analysis uses `rv_rd_bounds()` on the full-series contrast instead, for the reasons given above. The partially vaccinated row carries `NA` bounds deliberately.
 
-Annual births remains a `sliderInput`; the three cost parameters (`c_hosp`, `c_ed`, `c_indirect`) are `numericInput`s. This is not cosmetic: `updateSliderInput()` round-trips a value through ionRangeSlider, which rounds it to the decimal count implied by `step`, and with `step >= 1` that is zero decimals — a reset once turned `c_indirect`'s then-unrounded `423.782857142857` into `424` and the app stopped reproducing the source spreadsheet. Typed numeric inputs do not coerce to a step grid, so exact values survive both initial load and reset. That still matters now that the cost is rounded to cents: `c_hosp` at `19251.56` and `c_ed` at `781.83` would both be flattened to whole dollars by a slider.
+Two notes on the indirect cost that belong in any methods write-up. The $104.64 of out-of-pocket items is from Widdowson et al., CPI-inflated, but Widdowson's own forgone-earnings figure ($118/day in 2004, $202.40 inflated to 2025) is *excluded* and replaced by the BLS calculation — reasonable, since 2023 BLS data are fresher and using both would double-count, but not what the citation implies. And dividing median weekly earnings by seven yields a notional $159.57/day that no one actually forgoes; BLS reports earnings for full-time workers over a five-day week, so a lost workday is nearer $223.40. The five-day denominator would raise the indirect cost to $551.44 and the 30% estimate to about $105.8M. The current choice errs downward, consistent with the letter's framing of these as minimum estimates.
+
+Annual births remains a `sliderInput`; the three cost parameters (`c_hosp`, `c_ed`, `c_indirect`) are `numericInput`s. This is not cosmetic: `updateSliderInput()` round-trips a value through ionRangeSlider, which rounds it to the decimal count implied by `step`, and with `step >= 1` that is zero decimals — a reset once turned `c_indirect`'s then-unrounded `423.782857142857` into `424` and the app stopped reproducing the source spreadsheet. Typed numeric inputs do not coerce to a step grid, so exact values survive both initial load and reset. This still matters now that the cost is rounded to cents: `c_hosp` at `19251.56` and `c_ed` at `781.83` would both be flattened to whole dollars by a slider.
 
 ## Possible extensions
 
-Two features were scoped out of this draft but are straightforward to add, since `rv_project()` already takes the relevant arguments or is easily generalized:
-
-- **Sensitivity analysis.** The agreed next piece of work, and the answer to Reviewer #3's request that uncertainty be incorporated into the projections. The confidence limits it needs are already carried in `rv_groups()` and `rv_scalars()`. Note that the bootstrap confidence intervals in Butler et al. are marginal, so treating the four stratum-specific risks as independent will overstate the width of any resulting interval.
+- **Probabilistic sensitivity analysis.** Draw the full-series risk difference from its reported limits and the costs from lognormal distributions, and report medians with intervals. The deterministic bounding version is already implemented (see *Risk-difference sensitivity* above). Note that the bootstrap confidence intervals in Butler et al. are marginal, so treating hospitalization and ED effects as independent understates their correlation while taking both at their limits overstates it.
 - **Indirect (herd) protection.** A multiplier on risk in the unvaccinated stratum, addressing the first stated limitation. Whether this widens or narrows the excess depends on whether the multiplier is held fixed or allowed to scale with coverage, which is the substantively interesting question.
+- **Outpatient visits.** Excluded because Butler et al. report no risk estimates for AGE-related outpatient care, which is the binding constraint rather than the arithmetic.

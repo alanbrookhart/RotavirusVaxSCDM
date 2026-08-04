@@ -50,19 +50,31 @@ grid_cell <- function(id, value, step, aria) {
   tags$td(ni)
 }
 
+# The partially vaccinated risks are not typed. They are the share-weighted
+# average of the one- and two-dose RV5 levels, set by the weight in the sidebar,
+# so they are rendered read-only. Keeping them derived rather than editable also
+# means the displayed rounding costs nothing: the model uses the exact blend
+# while the cell shows four decimals.
+derived_cell <- function(output_id) {
+  tags$td(class = "derived-cell", textOutput(output_id, inline = TRUE))
+}
+
 group_grid <- function() {
   rows <- lapply(seq_len(nrow(GROUPS)), function(i) {
     g <- GROUPS[i, ]
+    derived <- identical(g$id, "partial")
     tags$tr(
       tags$th(g$label, scope = "row", class = "grid-label"),
       grid_cell(paste0("cur_",  g$id), g$share,         0.1,
         paste(g$label, "current percent")),
       grid_cell(paste0("scen_", g$id), SCEN_DEFAULT[i], 0.1,
         paste(g$label, "scenario percent")),
-      grid_cell(paste0("rh_",   g$id), g$risk_h,        0.01,
-        paste(g$label, "hospitalization risk percent")),
-      grid_cell(paste0("re_",   g$id), g$risk_e,        0.01,
-        paste(g$label, "ED visit risk percent"))
+      if (derived) derived_cell("blend_h") else
+        grid_cell(paste0("rh_", g$id), g$risk_h, 0.01,
+          paste(g$label, "hospitalization risk percent")),
+      if (derived) derived_cell("blend_e") else
+        grid_cell(paste0("re_", g$id), g$risk_e, 0.01,
+          paste(g$label, "ED visit risk percent"))
     )
   })
 
@@ -121,6 +133,7 @@ ui <- page_navbar(
     .grid-table tfoot td { padding-top: .1rem; }
     .grid-sum { font-size: .82rem; color: #64748b; }
     .grid-sum.warn { color: #b45309; font-weight: 600; }
+    .derived-cell { color: #475569; font-style: italic; padding-left: .85rem; }
   "))),
 
   sidebar = sidebar(
@@ -139,6 +152,25 @@ ui <- page_navbar(
     hr(),
     h6("Population and costs", class = "text-uppercase text-muted mb-1"),
     lapply(seq_len(nrow(SCALARS)), function(i) scalar_input(SCALARS[i, ])),
+
+    hr(),
+    h6("Composition of the partially vaccinated",
+      class = "text-uppercase text-muted mb-1"),
+    div(
+      title = paste("Sederdahl et al. report only a single lumped 15.3%",
+                    "partially vaccinated. This weight apportions it between",
+                    "the one- and two-dose RV5 levels, whose two-year risks",
+                    "Butler et al. report separately. Default is the",
+                    "person-time ratio in Butler Table 1,",
+                    "162196/(162196+323558)."),
+      numericInput("w_partial1", "One dose, % of partially vaccinated",
+        value = round(rv_partial_components()$w_default, 6),
+        min = 0, max = 100, step = 0.1, width = "100%")
+    ),
+    div(class = "small text-muted mb-2",
+      "Sets the blended risks in the grid. Has no effect on the projected",
+      "excess, since the partially vaccinated are held fixed across scenarios;",
+      "it moves the baseline only."),
 
     actionButton("reset", "Reset to published values",
       class = "btn-outline-secondary btn-sm mt-2")
@@ -264,6 +296,12 @@ convention."
 
 server <- function(input, output, session) {
 
+  # Percent of the partially vaccinated who received one dose. Drives the
+  # blended risks for that stratum; nothing else reads it.
+  w_partial1 <- reactive({
+    rv_num(input$w_partial1, rv_partial_components()$w_default)
+  })
+
   gvals <- reactive({
     g <- GROUPS
     g$share  <- vapply(GROUPS$id, function(i)
@@ -272,8 +310,19 @@ server <- function(input, output, session) {
       rv_num(input[[paste0("rh_", i)]], GROUPS$risk_h[GROUPS$id == i]), numeric(1))
     g$risk_e <- vapply(GROUPS$id, function(i)
       rv_num(input[[paste0("re_", i)]], GROUPS$risk_e[GROUPS$id == i]), numeric(1))
+
+    # The partially vaccinated row has no input cells -- its risks are derived
+    # from the weight, at full precision. `rv_num` above fell back to the
+    # registry defaults for it; overwrite with the live blend.
+    b <- rv_blend_partial(w_partial1())
+    k <- which(GROUPS$id == "partial")
+    g$risk_h[k] <- b[["hosp"]]
+    g$risk_e[k] <- b[["ed"]]
     g
   })
+
+  output$blend_h <- renderText(sprintf("%.4f", rv_blend_partial(w_partial1())[["hosp"]]))
+  output$blend_e <- renderText(sprintf("%.4f", rv_blend_partial(w_partial1())[["ed"]]))
 
   scen_share <- reactive({
     vapply(seq_len(nrow(GROUPS)), function(i)
@@ -331,9 +380,15 @@ server <- function(input, output, session) {
     for (k in seq_len(nrow(GROUPS))) {
       updateNumericInput(session, paste0("cur_",  GROUPS$id[k]), value = GROUPS$share[k])
       updateNumericInput(session, paste0("scen_", GROUPS$id[k]), value = SCEN_DEFAULT[k])
-      updateNumericInput(session, paste0("rh_",   GROUPS$id[k]), value = GROUPS$risk_h[k])
-      updateNumericInput(session, paste0("re_",   GROUPS$id[k]), value = GROUPS$risk_e[k])
+      # The partially vaccinated risks are derived, not inputs; restoring the
+      # weight below puts them back.
+      if (!identical(GROUPS$id[k], "partial")) {
+        updateNumericInput(session, paste0("rh_", GROUPS$id[k]), value = GROUPS$risk_h[k])
+        updateNumericInput(session, paste0("re_", GROUPS$id[k]), value = GROUPS$risk_e[k])
+      }
     }
+    updateNumericInput(session, "w_partial1",
+      value = round(rv_partial_components()$w_default, 6))
     for (i in seq_len(nrow(SCALARS))) {
       if (identical(SCALARS$widget[i], "slider")) {
         updateSliderInput(session, SCALARS$id[i], value = SCALARS$default[i])
@@ -363,11 +418,15 @@ server <- function(input, output, session) {
     ids <- character(0); labs <- character(0)
     for (p in names(prefixes)) {
       for (k in seq_len(nrow(GROUPS))) {
+        # The partially vaccinated risk cells are derived, so there is no input
+        # to be left blank.
+        if (p %in% c("rh", "re") && identical(GROUPS$id[k], "partial")) next
         ids  <- c(ids,  paste0(p, "_", GROUPS$id[k]))
         labs <- c(labs, paste0(GROUPS$label[k], " — ", prefixes[[p]]))
       }
     }
-    stats::setNames(c(labs, SCALARS$label), c(ids, SCALARS$id))
+    stats::setNames(c(labs, SCALARS$label, "One dose, % of partially vaccinated"),
+                    c(ids, SCALARS$id, "w_partial1"))
   })
 
   output$warn <- renderUI({
