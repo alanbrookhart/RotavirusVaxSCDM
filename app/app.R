@@ -436,7 +436,11 @@ server <- function(input, output, session) {
   }, align = "lrrrr", width = "100%", spacing = "xs")
 
   output$tbl_sources <- renderTable({
-    num <- function(x) formatC(x, format = "fg", digits = 8, big.mark = ",")
+    # Two decimals, and no trailing ".00" on whole numbers like the birth count.
+    num <- function(x) {
+      s <- formatC(x, format = "f", digits = 2, big.mark = ",")
+      sub("\\.00$", "", s)
+    }
     g <- GROUPS
     rbind(
       data.frame(

@@ -85,16 +85,26 @@ The partially vaccinated 15.3% is split into one- and two-dose RV5 recipients at
 
 ## Verification
 
-`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. All six primary targets reproduce closely: the four expenditure targets to within $1, and the two encounter counts to within 0.01 encounters.
+`tests/test-model.R` checks the R implementation against specific cells of `docs/RV spreadsheet.xlsx`. The encounter counts reproduce to within 0.01 encounters. The expenditure figures sit $17 to $420 below the spreadsheet, for one deliberate reason given below.
 
 | Quantity | Model | Spreadsheet |
 | --- | --- | --- |
 | Baseline hospitalizations (K19) | 20,201.71 | 20,201.71 |
 | Baseline ED visits (K60) | 126,708.41 | 126,708.41 |
-| Baseline expenditures (W23) | $550,236,944.72 | $550,236,945.15 |
-| Excess expenditures, 10% shift (X24) | $34,508,431.45 | $34,508,431.45 |
-| Excess expenditures, 20% shift (X25) | $69,016,862.91 | $69,016,862.91 |
-| Excess expenditures, 30% shift (X26) | $103,525,294.36 | $103,525,294.36 |
+| Baseline expenditures (W23) | $550,236,524.98 | $550,236,945.15 |
+| Excess expenditures, 10% shift (X24) | $34,508,414.69 | $34,508,431.45 |
+| Excess expenditures, 20% shift (X25) | $69,016,829.37 | $69,016,862.91 |
+| Excess expenditures, 30% shift (X26) | $103,525,244.06 | $103,525,294.36 |
+
+### Why the expenditure figures differ
+
+The indirect cost per episode is a **cost**, so this model rounds it to whole cents: $423.78. The spreadsheet does not. Its cell `Indirect costs!N45` is `=(H45+P24)`, where `H45` is two days of $1,117 weekly earnings taken over a seven-day week — and since seven does not divide 1,117, Excel carries the repeating decimal $423.782857142857… straight into every dollar cell downstream.
+
+Nothing the letter reports moves. Both printed figures are unchanged at $34.5M and $103.5M, footnote d's percentages are identical to four decimals (6.2716% and 18.8147%), and the encounter counts do not involve cost at all.
+
+The equivalence is still proved rather than asserted. `tests/test-model.R` has a "Spreadsheet equivalence" block that restores the unrounded intermediate and checks that `W23` and `X24`–`X26` come back to within $1 — so the rounding is demonstrably the *only* difference between the two. If that block ever fails, the model and the spreadsheet have genuinely diverged.
+
+Rounding `N45` to two decimals in the spreadsheet would remove the discrepancy at source, and would change the published 30% figure from $103,525,294 to $103,525,244 — still $103.5M.
 
 ### One discrepancy worth resolving before resubmission
 
@@ -115,11 +125,11 @@ The corresponding matched figures are \$34.5 million (10% shift, societal) and \
 | Two-year ED visit risks | 4.36 / 4.57 / 4.23 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2 |
 | Cost per hospitalization (direct) | \$19,251.56 | Karve et al. 2014, CPI-inflated to January 2025 |
 | Cost per ED visit (direct) | \$781.83 | Karve et al. 2014, CPI-inflated to January 2025 |
-| Indirect cost per episode | \$423.782857 | Two days of median weekly earnings (BLS CPS 2023, $1,117/wk over a 7-day week) plus $104.64 median out-of-pocket costs |
+| Indirect cost per episode | \$423.78 | Two days of median weekly earnings (BLS CPS 2023, $1,117/wk over a 7-day week) plus $104.64 median out-of-pocket costs, rounded to cents |
 
 The published 95% confidence limits are retained in `rv_groups()` and `rv_scalars()` as `_lo`/`_hi` columns. Nothing consumes them yet; they are the input for the sensitivity analysis planned as follow-up work.
 
-Annual births remains a `sliderInput`; the three cost parameters (`c_hosp`, `c_ed`, `c_indirect`) are `numericInput`s. This is not cosmetic: `updateSliderInput()` round-trips a value through ionRangeSlider, which rounds it to the decimal count implied by `step`, and with `step >= 1` that is zero decimals — a reset once turned `c_indirect`'s `423.782857142857` into `424` and the app stopped reproducing the source spreadsheet. Typed numeric inputs do not coerce to a step grid, so exact values survive both initial load and reset.
+Annual births remains a `sliderInput`; the three cost parameters (`c_hosp`, `c_ed`, `c_indirect`) are `numericInput`s. This is not cosmetic: `updateSliderInput()` round-trips a value through ionRangeSlider, which rounds it to the decimal count implied by `step`, and with `step >= 1` that is zero decimals — a reset once turned `c_indirect`'s then-unrounded `423.782857142857` into `424` and the app stopped reproducing the source spreadsheet. Typed numeric inputs do not coerce to a step grid, so exact values survive both initial load and reset. That still matters now that the cost is rounded to cents: `c_hosp` at `19251.56` and `c_ed` at `781.83` would both be flattened to whole dollars by a slider.
 
 ## Possible extensions
 

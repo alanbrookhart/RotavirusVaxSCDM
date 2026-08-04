@@ -81,11 +81,18 @@ rv_scalars <- function() {
       781.83, 0, 4000, 1, 586.37, 977.29,
       "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
       "numeric"),
-    # Kept as the underlying expression (spreadsheet "Indirect costs" cell
-    # N45 = H45 + P24): $1,117 weekly earnings over a 7-day week, two days of
-    # it, plus $104.64 of median out-of-pocket costs.
+    # Spreadsheet "Indirect costs" cell N45 = H45 + P24, i.e. two days of
+    # $1,117 weekly earnings taken over a 7-day week, plus $104.64 of median
+    # out-of-pocket costs: 1117 / 7 * 2 + 104.64 = 423.782857142857...
+    #
+    # Rounded here to whole cents, because it is a cost. The spreadsheet never
+    # rounded it -- Excel carries the repeating decimal from 1117/7 straight
+    # through -- so its dollar cells sit $17 to $420 above this model. Nothing
+    # the letter reports moves: both $34.5M and $103.5M are unchanged, as are
+    # footnote d's percentages to four decimals. test-model.R pins the gap and
+    # proves it is due to this rounding alone.
     s("c_indirect", "Indirect (productivity) cost per episode ($)",
-      1117 / 7 * 2 + 104.64, 0, 2000, 1, 317.84, 529.73,
+      423.78, 0, 2000, 1, 317.84, 529.73,
       paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk) plus",
             "out-of-pocket costs; applied identically to ED and inpatient",
             "episodes; range +/-25%"),

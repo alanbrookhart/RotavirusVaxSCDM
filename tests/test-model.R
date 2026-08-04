@@ -30,8 +30,15 @@ b <- rv_project(g, g$share, sc, societal = TRUE)
 
 check("Hospitalizations (xlsx K19)", b$baseline$hosp_total,  20201.714152, 0.01)
 check("ED visits (xlsx K60)",        b$baseline$ed_total,   126708.413902, 0.01)
-check("Total expenditures (xlsx W23)", b$baseline$cost_total, 550236945.15, 1)
 check("Zero excess when scenario equals current", b$excess$cost_total, 0, 1e-6)
+
+# Dollar figures are asserted against this model's own arithmetic to the cent,
+# NOT against the spreadsheet, because `c_indirect` is deliberately rounded to
+# whole cents while the spreadsheet carries the repeating decimal from 1117/7.
+# The reproduction proof lives in the "Spreadsheet equivalence" block below: it
+# shows that restoring the unrounded intermediate recovers W23 and X24-X26
+# exactly, so this rounding is the only difference between the two.
+check("Total expenditures, rounded cost", b$baseline$cost_total, 550236524.98, 0.01)
 
 cat("\nPrefill scenario columns match spreadsheet rows J23-J26 / J31-J34 / J41-J44\n")
 cat(strrep("-", 100), "\n")
@@ -51,11 +58,13 @@ for (s in names(prefill)) {
 cat("\nExcess burden by scenario\n")
 cat(strrep("-", 100), "\n")
 
-# Spreadsheet cells: hosp L27/L35/L45, ED L68/L75/L83, cost X24/X25/X26
+# Encounter counts are spreadsheet cells (hosp L27/L35/L45, ED L68/L75/L83) and
+# do not involve cost, so they are asserted against the spreadsheet directly.
+# Costs are this model's own values -- see the note above.
 expected <- list(
-  "10%" = c(hosp = 1485.29593,  ed = 4383.43433,  cost = 34508431.45),
-  "20%" = c(hosp = 2970.59186,  ed = 8766.86866,  cost = 69016862.91),
-  "30%" = c(hosp = 4455.88779,  ed = 13150.30299, cost = 103525294.36)
+  "10%" = c(hosp = 1485.29593,  ed = 4383.43433,  cost = 34508414.69),
+  "20%" = c(hosp = 2970.59186,  ed = 8766.86866,  cost = 69016829.37),
+  "30%" = c(hosp = 4455.88779,  ed = 13150.30299, cost = 103525244.06)
 )
 
 for (s in names(expected)) {
@@ -63,8 +72,30 @@ for (s in names(expected)) {
   e <- expected[[s]]
   check(sprintf("Excess hospitalizations, %s", s), r$excess$hosp, e[["hosp"]], 0.01)
   check(sprintf("Excess ED visits, %s", s),        r$excess$ed,   e[["ed"]],   0.01)
-  check(sprintf("Excess expenditures, %s", s), r$excess$cost_total, e[["cost"]], 1)
+  check(sprintf("Excess expenditures, %s", s), r$excess$cost_total, e[["cost"]], 0.01)
 }
+
+cat("\nSpreadsheet equivalence: the rounded cent is the ONLY difference\n")
+cat(strrep("-", 100), "\n")
+
+# Restore the spreadsheet's unrounded intermediate (Indirect costs!N45) and the
+# model must reproduce W23 and X24-X26 to within $1, as it did before the
+# rounding. If this block fails, the model and the spreadsheet have genuinely
+# diverged; if only the block above fails, a cost input moved.
+sc_x <- sc; sc_x$c_indirect <- 1117 / 7 * 2 + 104.64
+check("Baseline expenditures (xlsx W23)",
+  rv_project(g, g$share, sc_x)$baseline$cost_total, 550236945.15, 1)
+xls <- c("10%" = 34508431.45, "20%" = 69016862.91, "30%" = 103525294.36)
+for (s in names(xls)) {
+  check(sprintf("Excess expenditures, %s (xlsx X2%s)", s, substr(s, 1, 1)),
+    rv_project(g, scen[[s]], sc_x)$excess$cost_total, xls[[s]], 1)
+}
+
+# And the rounding costs less than reporting precision: both figures the letter
+# prints are unchanged, as are footnote d's percentages to four decimals.
+check("Rounding shifts the 30% excess by under $100",
+  abs(rv_project(g, scen[["30%"]], sc)$excess$cost_total -
+      rv_project(g, scen[["30%"]], sc_x)$excess$cost_total) < 100, TRUE, 0)
 
 cat("\nRelative excess -- Figure 2 footnotes b, c, d (xlsx sheet 'Monica')\n")
 cat(strrep("-", 100), "\n")
