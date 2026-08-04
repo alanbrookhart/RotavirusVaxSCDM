@@ -251,7 +251,22 @@ The Current and Scenario columns are entered directly. Any pair of distributions
 can be compared; the 10%, 20% and 30% buttons fill the Scenario column with the
 published scenarios, which move that many percentage points from the fully
 vaccinated stratum into the unvaccinated one while holding the partially
-vaccinated strata fixed.
+vaccinated stratum fixed.
+
+Butler et al. estimate separate risks for children who received one dose and two
+doses of the three-dose RV5 series. The partially vaccinated row shown here
+carries the share-weighted average of the two, using the proportion set under
+*Composition of the partially vaccinated* in the sidebar. Its two risk cells are
+therefore displayed rather than edited.
+
+The Stronger and Weaker buttons set the full-series risks so that the risk
+difference against unvaccinated equals the lower or upper 95% confidence limit
+reported by Butler et al. Because the scenario moves children between these two
+strata alone, the projected excess is proportional to that risk difference, so
+these bounds carry directly through to the projection. Note that they also change
+the baseline, since most of the cohort is fully vaccinated, and that setting the
+hospitalization and ED limits together assumes both err in the same direction --
+they bracket the projection rather than forming a 95% interval around it.
 
 Estimates account for direct effects of vaccination only. No indirect (herd)
 protection is assumed, so projected excess encounters should be read as a lower
@@ -275,13 +290,9 @@ AGE-coded encounters, which have imperfect sensitivity."
 spreadsheet: 20,202 baseline hospitalizations and 126,708 baseline ED visits, and
 an excess of 1,485 hospitalizations and 4,383 ED visits.
 
-Note that the published letter reports \\$32.0 million for the 10% shift and
-\\$103.5 million for the 30% shift. These are not on the same footing: \\$32.0
-million is the excess under a **direct medical** perspective, whereas \\$103.5
-million is the excess under a **societal** perspective. The societal figure for
-a 10% shift is \\$34.5 million, and the direct-medical figure for a 30% shift is
-\\$96.1 million. Switching the cost perspective in the sidebar reproduces either
-convention."
+Costs are reported from a societal perspective by default, combining direct
+medical costs with indirect costs. The cost perspective control in the sidebar
+switches to direct medical costs alone."
         )
       )
     )
@@ -400,10 +411,12 @@ server <- function(input, output, session) {
     updateNumericInput(session, "cohorts", value = 1)
   })
 
+  # A plain column total, always muted. Deliberately carries no commentary about
+  # whether it reaches 100%: the published shares sum to 99.9% because of
+  # rounding in the source, and flagging that is a note for the authors, not
+  # something to put in front of a reader.
   sum_badge <- function(total) {
-    off <- abs(total - 100) > 0.05
-    span(class = paste("grid-sum", if (off) "warn" else ""),
-      sprintf("sums to %.1f%%", total))
+    span(class = "grid-sum", sprintf("%.1f%%", total))
   }
 
   output$sum_cur  <- renderUI(sum_badge(sum(gvals()$share)))
@@ -439,19 +452,6 @@ server <- function(input, output, session) {
     if (length(blank)) {
       msgs <- c(msgs, list(sprintf("Empty, treated as 0: %s.",
         paste(CELL_LABELS[blank], collapse = "; "))))
-    }
-
-    # One sentence naming whichever columns are off, not one per column: at the
-    # published values both are 99.9% and the paragraph would appear twice.
-    r <- res()
-    off <- c(
-      if (abs(r$share_sum_base - 100) > 0.05) sprintf("Current (%.1f%%)", r$share_sum_base),
-      if (abs(r$share_sum_scen - 100) > 0.05) sprintf("Scenario (%.1f%%)", r$share_sum_scen)
-    )
-    if (length(off)) {
-      msgs <- c(msgs, list(sprintf(
-        "Shares do not sum to 100%%: %s. The published values (13.9 / 15.3 / 70.7) sum to 99.9%% because of rounding; leaving this uncorrected reproduces the spreadsheet exactly.",
-        paste(off, collapse = " and "))))
     }
 
     if (!length(msgs)) return(NULL)
