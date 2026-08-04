@@ -107,6 +107,49 @@ rv_scalar_defaults <- function() {
 }
 
 
+# --- Risk-difference confidence limits ----------------------------------------
+# Butler et al. 2021 Table 1 cell E18 and Table 2 cell E59: the two-year risk
+# difference between the full RV5 series and no vaccination, percentage points.
+#
+#   hospitalization   -0.40 (-0.50, -0.31)
+#   ED visit          -1.22 (-1.43, -1.00)
+#
+# `rv_apply_rd()` sets the full-series risks so that this risk difference takes
+# a given value, holding the unvaccinated risks fixed. That is the contrast the
+# authors estimated and bootstrapped, and because the scenario moves people
+# strictly between these two strata, the projected excess is exactly linear in
+# it -- so a bound on the risk difference maps directly onto a bound on the
+# excess, with no further assumption.
+#
+# Note the point estimates disagree with the risk table by 0.01 in each
+# direction: differencing the rounded risks gives -0.41 and -1.21, while the
+# paper reports -0.40 and -1.22. Both are rounded views of the same unrounded
+# quantity. Anchoring on the unvaccinated risk, as here, is the reading that
+# matches "set the risk difference to its confidence limit".
+
+rv_rd_bounds <- function() {
+  list(
+    lower = c(hosp = -0.50, ed = -1.43),   # larger protective effect
+    point = c(hosp = -0.40, ed = -1.22),
+    upper = c(hosp = -0.31, ed = -1.00)    # smaller protective effect
+  )
+}
+
+
+#' Set the full-series risks to a given risk difference vs unvaccinated
+#'
+#' @param groups Data frame shaped like `rv_groups()`.
+#' @param rd     Named numeric with elements `hosp` and `ed`, in percentage
+#'               points (negative = protective).
+#' @return `groups` with `risk_h` and `risk_e` of the last row replaced.
+rv_apply_rd <- function(groups, rd) {
+  n <- nrow(groups)
+  groups$risk_h[n] <- groups$risk_h[1] + rd[["hosp"]]
+  groups$risk_e[n] <- groups$risk_e[1] + rd[["ed"]]
+  groups
+}
+
+
 # --- Published scenario columns -----------------------------------------------
 # Derived from the current column rather than transcribed, so the two cannot
 # drift apart. Matches spreadsheet rows J23-J26, J31-J34 and J41-J44: the shift

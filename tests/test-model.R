@@ -97,6 +97,38 @@ check("Rounding shifts the 30% excess by under $100",
   abs(rv_project(g, scen[["30%"]], sc)$excess$cost_total -
       rv_project(g, scen[["30%"]], sc_x)$excess$cost_total) < 100, TRUE, 0)
 
+cat("\nRisk-difference sensitivity (Butler Table 1 E18, Table 2 E59)\n")
+cat(strrep("-", 100), "\n")
+
+rdb <- rv_rd_bounds()
+check("RD lower limit, hospitalization", rdb$lower[["hosp"]], -0.50, 1e-12)
+check("RD lower limit, ED visit",        rdb$lower[["ed"]],   -1.43, 1e-12)
+check("RD upper limit, hospitalization", rdb$upper[["hosp"]], -0.31, 1e-12)
+check("RD upper limit, ED visit",        rdb$upper[["ed"]],   -1.00, 1e-12)
+
+# Applying a bound must set the full-series risk to unvaccinated + RD, leave the
+# unvaccinated and both partial rows untouched, and reproduce the RD exactly.
+g_lo <- rv_apply_rd(g, rdb$lower)
+g_hi <- rv_apply_rd(g, rdb$upper)
+check("Lower bound sets hosp risk", g_lo$risk_h[4], 0.38, 1e-9)
+check("Lower bound sets ED risk",   g_lo$risk_e[4], 2.93, 1e-9)
+check("Upper bound sets hosp risk", g_hi$risk_h[4], 0.57, 1e-9)
+check("Upper bound sets ED risk",   g_hi$risk_e[4], 3.36, 1e-9)
+check("Realised RD equals the limit", g_lo$risk_h[4] - g_lo$risk_h[1], -0.50, 1e-9)
+stopifnot(identical(g_lo$risk_h[1:3], g$risk_h[1:3]),
+          identical(g_lo$risk_e[1:3], g$risk_e[1:3]))
+cat("Unvaccinated and partial rows left untouched: OK\n")
+
+# The excess is linear in the risk difference, so the bounds bracket the point
+# estimate and the ratio of excesses equals the ratio of risk differences.
+e_lo <- rv_project(g_lo, scen[["30%"]], sc)$excess
+e_hi <- rv_project(g_hi, scen[["30%"]], sc)$excess
+e_pt <- rv_project(g,    scen[["30%"]], sc)$excess
+stopifnot(e_hi$hosp < e_pt$hosp, e_pt$hosp < e_lo$hosp)
+cat(sprintf("30%% shift, excess hosp: weaker %.0f < point %.0f < stronger %.0f: OK\n",
+  e_hi$hosp, e_pt$hosp, e_lo$hosp))
+check("Excess scales linearly with the RD", e_lo$hosp / e_hi$hosp, 0.50 / 0.31, 1e-9)
+
 cat("\nRelative excess -- Figure 2 footnotes b, c, d (xlsx sheet 'Monica')\n")
 cat(strrep("-", 100), "\n")
 

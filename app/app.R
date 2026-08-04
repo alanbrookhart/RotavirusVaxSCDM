@@ -20,9 +20,10 @@ library(bslib)
 # under Shinylive as well as under a conventional Shiny server.
 source("model.R")
 
-GROUPS  <- rv_groups()
-SCALARS <- rv_scalars()
-SCEN    <- rv_scenarios()
+GROUPS    <- rv_groups()
+SCALARS   <- rv_scalars()
+SCEN      <- rv_scenarios()
+RD_BOUNDS <- rv_rd_bounds()
 
 # Scenario column opens on the published 10% scenario, so the app loads showing
 # the letter's headline result rather than an all-zero excess.
@@ -150,11 +151,24 @@ ui <- page_navbar(
       card_header("Vaccination groups"),
       card_body(
         div(id = "grid-wrap", group_grid()),
-        div(class = "d-flex gap-2 align-items-center mt-2",
-          span(class = "small text-muted me-1", "Fill scenario column:"),
+        div(class = "d-flex gap-2 align-items-center mt-2 flex-wrap",
+          span(class = "small text-muted me-1", "Hypothetical Effect of SDM:"),
           actionButton("fill_10", "10%", class = "btn-outline-primary btn-sm"),
           actionButton("fill_20", "20%", class = "btn-outline-primary btn-sm"),
           actionButton("fill_30", "30%", class = "btn-outline-primary btn-sm")
+        ),
+        div(class = "d-flex gap-2 align-items-center mt-2 flex-wrap",
+          span(class = "small text-muted me-1", "Vaccine effect at 95% CI bounds:"),
+          actionButton("rd_lower", "Stronger", class = "btn-outline-secondary btn-sm",
+            title = paste("Set the full-series risk difference to the lower confidence",
+                          "limit: -0.50 for hospitalization, -1.43 for ED visits.",
+                          "A larger protective effect, so a larger projected excess.")),
+          actionButton("rd_upper", "Weaker", class = "btn-outline-secondary btn-sm",
+            title = paste("Set the full-series risk difference to the upper confidence",
+                          "limit: -0.31 for hospitalization, -1.00 for ED visits.",
+                          "A smaller protective effect, so a smaller projected excess.")),
+          span(class = "small text-muted ms-1",
+            "Butler et al. 2021, Table 1 and Table 2 risk differences")
         )
       )
     ),
@@ -294,6 +308,22 @@ server <- function(input, output, session) {
       for (k in seq_len(nrow(GROUPS))) {
         updateNumericInput(session, paste0("scen_", GROUPS$id[k]), value = v[k])
       }
+    }, ignoreInit = TRUE)
+  })
+
+  # Risk-difference sensitivity. Sets the full-series risks so the difference
+  # from unvaccinated equals a confidence limit, reading the unvaccinated risks
+  # from the grid rather than a constant so the buttons respect an edited
+  # reference. `local()` is load-bearing here for the same reason as above.
+  for (bd in c("lower", "upper")) local({
+    bound <- bd
+    observeEvent(input[[paste0("rd_", bound)]], {
+      g <- rv_apply_rd(gvals(), RD_BOUNDS[[bound]])
+      n <- nrow(g)
+      updateNumericInput(session, paste0("rh_", GROUPS$id[n]),
+        value = round(g$risk_h[n], 6))
+      updateNumericInput(session, paste0("re_", GROUPS$id[n]),
+        value = round(g$risk_e[n], 6))
     }, ignoreInit = TRUE)
   })
 
