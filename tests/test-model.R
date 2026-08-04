@@ -121,10 +121,15 @@ for (w in c(0, 20, pc$w_default, 50, 100)) {
   s1 <- g1$share; s1[1] <- s1[1] + 30; s1[3] <- s1[3] - 30
   s2 <- g2$share; s2[1] <- s2[1] + 30; s2[4] <- s2[4] - 30
   r1 <- rv_project(g1, s1, sc); r2 <- rv_project(g2, s2, sc)
+  # Tolerance is one cent, not machine epsilon. These are ~$5.5e8 quantities
+  # summed in a different order by the two builds, so an exactly-equal result is
+  # not something floating point guarantees across R builds: 1 ulp here is
+  # already 1.2e-7. Agreement to the cent is the meaningful claim and is
+  # portable; a tighter bound tests the compiler, not the model.
   check(sprintf("Blend == two strata at w=%.4f%% (baseline cost)", w),
-    r1$baseline$cost_total, r2$baseline$cost_total, 1e-6)
+    r1$baseline$cost_total, r2$baseline$cost_total, 0.01)
   check(sprintf("Blend == two strata at w=%.4f%% (excess cost)", w),
-    r1$excess$cost_total, r2$excess$cost_total, 1e-6)
+    r1$excess$cost_total, r2$excess$cost_total, 0.01)
 }
 
 # The weight moves the baseline but cannot move the excess, because the
@@ -133,7 +138,12 @@ exc <- vapply(c(0, 20, 50, 100), function(w) {
   gg <- rv_groups(w); s <- gg$share; s[1] <- s[1] + 30; s[3] <- s[3] - 30
   rv_project(gg, s, sc)$excess$cost_total
 }, numeric(1))
-check("Weight has no effect on the excess", diff(range(exc)), 0, 1e-9)
+# One cent again. The partial stratum's contribution appears in both the
+# baseline and the scenario sum and cancels in the subtraction, but it cancels
+# arithmetically rather than symbolically -- changing the weight changes the
+# rounding of an intermediate. On ~$1e8 a single ulp is 2.3e-8, so a 1e-9 bound
+# would be asserting something below the resolution of a double.
+check("Weight has no effect on the excess", diff(range(exc)), 0, 0.01)
 base <- vapply(c(0, 100), function(w) rv_project(rv_groups(w), rv_groups(w)$share, sc)$baseline$cost_total, numeric(1))
 stopifnot(diff(base) != 0)
 cat(sprintf("Weight does move the baseline (w=0 vs w=100: %s vs %s): OK\n",
@@ -162,7 +172,7 @@ check("Point bound restores the published hosp risk", g_pt$risk_h[nrow(g)], 0.47
 check("Point bound restores the published ED risk",   g_pt$risk_e[nrow(g)], 3.15, 1e-9)
 check("Point bound reproduces the published excess",
   rv_project(g_pt, scen[["30%"]], sc)$excess$cost_total,
-  rv_project(g,    scen[["30%"]], sc)$excess$cost_total, 1e-6)
+  rv_project(g,    scen[["30%"]], sc)$excess$cost_total, 0.01)
 
 # Applying a bound must set the full-series risk to unvaccinated + RD, leave the
 # unvaccinated and both partial rows untouched, and reproduce the RD exactly.
