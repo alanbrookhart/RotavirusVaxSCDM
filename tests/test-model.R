@@ -151,6 +151,19 @@ check("RD lower limit, ED visit",        rdb$lower[["ed"]],   -1.43, 1e-12)
 check("RD upper limit, hospitalization", rdb$upper[["hosp"]], -0.31, 1e-12)
 check("RD upper limit, ED visit",        rdb$upper[["ed"]],   -1.00, 1e-12)
 
+# The point bound is derived from the published risks, so applying it must be a
+# no-op -- that is what makes the "Best Estimate" button restore the default
+# rather than shifting the full-series risk to 0.48 as the paper's rounded
+# -0.40 would.
+check("RD point, hospitalization", rdb$point[["hosp"]], 0.47 - 0.88, 1e-12)
+check("RD point, ED visit",        rdb$point[["ed"]],   3.15 - 4.36, 1e-12)
+g_pt <- rv_apply_rd(g, rdb$point)
+check("Point bound restores the published hosp risk", g_pt$risk_h[nrow(g)], 0.47, 1e-9)
+check("Point bound restores the published ED risk",   g_pt$risk_e[nrow(g)], 3.15, 1e-9)
+check("Point bound reproduces the published excess",
+  rv_project(g_pt, scen[["30%"]], sc)$excess$cost_total,
+  rv_project(g,    scen[["30%"]], sc)$excess$cost_total, 1e-6)
+
 # Applying a bound must set the full-series risk to unvaccinated + RD, leave the
 # unvaccinated and both partial rows untouched, and reproduce the RD exactly.
 g_lo <- rv_apply_rd(g, rdb$lower)
@@ -171,7 +184,7 @@ e_lo <- rv_project(g_lo, scen[["30%"]], sc)$excess
 e_hi <- rv_project(g_hi, scen[["30%"]], sc)$excess
 e_pt <- rv_project(g,    scen[["30%"]], sc)$excess
 stopifnot(e_hi$hosp < e_pt$hosp, e_pt$hosp < e_lo$hosp)
-cat(sprintf("30%% shift, excess hosp: weaker %.0f < point %.0f < stronger %.0f: OK\n",
+cat(sprintf("30%% shift, excess hosp: most conservative %.0f < best estimate %.0f < least conservative %.0f: OK\n",
   e_hi$hosp, e_pt$hosp, e_lo$hosp))
 check("Excess scales linearly with the RD", e_lo$hosp / e_hi$hosp, 0.50 / 0.31, 1e-9)
 

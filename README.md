@@ -97,7 +97,17 @@ Confidence limits are deliberately **not** carried for this row. Its risk is a m
 
 ### Risk-difference sensitivity
 
-The **Stronger** and **Weaker** buttons set the full-series risks so that the risk difference against unvaccinated equals a 95% confidence limit from Butler et al. — Table 1 cell `E18`, −0.40 (−0.50, −0.31) for hospitalization, and Table 2 cell `E59`, −1.22 (−1.43, −1.00) for ED visits. Both risks move together, and the unvaccinated risk is read from the grid rather than a constant, so an edited reference is honoured.
+Three buttons set the full-series risks so that the risk difference against unvaccinated equals a confidence limit or the point estimate from Butler et al. — Table 1 cell `E18`, −0.40 (−0.50, −0.31) for hospitalization, and Table 2 cell `E59`, −1.22 (−1.43, −1.00) for ED visits. Both risks move together, and the unvaccinated risk is read from the grid rather than a constant, so an edited reference is honoured.
+
+| Button | Risk difference | Full-series risk | Excess, 30% scenario |
+| --- | --- | --- | --- |
+| Most Conservative | −0.31 / −1.00 | 0.57 / 3.36 | 3,369 hosp, $79.4M |
+| Best Estimate | −0.41 / −1.21 | 0.47 / 3.15 | 4,456 hosp, $103.5M |
+| Least Conservative | −0.50 / −1.43 | 0.38 / 2.93 | 5,434 hosp, $125.7M |
+
+*Conservative* follows the convention of naming the assumption least favourable to the claim being advanced: the smallest protective effect the data support yields the smallest projected excess, which is the direction consistent with the letter's framing of its figures as minimum estimates.
+
+**Best Estimate** is derived from the published risks rather than transcribed from the risk-difference column, so applying it is a no-op that restores the defaults. Taking the paper's rounded −0.40 instead would put the full-series risk at 0.48 rather than the published 0.47, and the app would stop reproducing the letter. Deriving it also keeps all three buttons on one basis — every one is "risk in the unvaccinated, plus this difference".
 
 That contrast is the one Butler et al. actually estimated and bootstrapped, and because the scenario moves people strictly between the full-series and unvaccinated strata, the projected excess is exactly linear in it. A bound on the risk difference therefore maps directly onto a bound on the excess, with no further assumption. At the 30% scenario this gives roughly $79M to $126M around a $103.5M point estimate.
 
@@ -138,7 +148,7 @@ Rounding `N45` to two decimals in the spreadsheet would remove the discrepancy a
 | One dose, % of partially vaccinated | 33.390564 | Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558) |
 | Two-year hospitalization risks | 0.88 / 0.673442 / 0.47 % | Butler et al. *Epidemiology* 2021, Table 1; middle value is the weighted blend of 0.80 and 0.61 |
 | Two-year ED visit risks | 4.36 / 4.343528 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2; middle value is the weighted blend of 4.57 and 4.23 |
-| Risk difference, full series vs unvaccinated | −0.40 (−0.50, −0.31) hosp; −1.22 (−1.43, −1.00) ED | Butler et al. 2021, Table 1 `E18` and Table 2 `E59`; drives the Stronger/Weaker buttons |
+| Risk difference, full series vs unvaccinated | −0.40 (−0.50, −0.31) hosp; −1.22 (−1.43, −1.00) ED | Butler et al. 2021, Table 1 `E18` and Table 2 `E59`; drives the vaccine effectiveness buttons |
 | Cost per hospitalization (direct) | \$19,251.56 | Karve et al. 2014, CPI-inflated to January 2025 |
 | Cost per ED visit (direct) | \$781.83 | Karve et al. 2014, CPI-inflated to January 2025 |
 | Indirect cost per episode | \$423.78 | Two days of median weekly earnings (BLS CPS 2023, $1,117/wk over a 7-day week) plus $104.64 median out-of-pocket costs, rounded to cents |

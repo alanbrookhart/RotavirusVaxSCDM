@@ -189,16 +189,27 @@ ui <- page_navbar(
           actionButton("fill_20", "20%", class = "btn-outline-primary btn-sm"),
           actionButton("fill_30", "30%", class = "btn-outline-primary btn-sm")
         ),
+        # Ordered least to most excess, so the labels read left to right in the
+        # same direction as the projection they produce.
         div(class = "d-flex gap-2 align-items-center mt-2 flex-wrap",
-          span(class = "small text-muted me-1", "Vaccine effect at 95% CI bounds:"),
-          actionButton("rd_lower", "Stronger", class = "btn-outline-secondary btn-sm",
-            title = paste("Set the full-series risk difference to the lower confidence",
-                          "limit: -0.50 for hospitalization, -1.43 for ED visits.",
-                          "A larger protective effect, so a larger projected excess.")),
-          actionButton("rd_upper", "Weaker", class = "btn-outline-secondary btn-sm",
-            title = paste("Set the full-series risk difference to the upper confidence",
-                          "limit: -0.31 for hospitalization, -1.00 for ED visits.",
-                          "A smaller protective effect, so a smaller projected excess.")),
+          span(class = "small text-muted me-1", "Vaccine effectiveness assumption:"),
+          actionButton("rd_upper", "Most Conservative",
+            class = "btn-outline-secondary btn-sm",
+            title = paste("Upper 95% confidence limit of the risk difference:",
+                          "-0.31 for hospitalization, -1.00 for ED visits.",
+                          "The smallest protective effect the data support, and so",
+                          "the smallest projected excess.")),
+          actionButton("rd_point", "Best Estimate",
+            class = "btn-outline-secondary btn-sm",
+            title = paste("Point estimate: the published two-year risks,",
+                          "0.47 for hospitalization and 3.15 for ED visits,",
+                          "a risk difference of -0.41 and -1.21.")),
+          actionButton("rd_lower", "Least Conservative",
+            class = "btn-outline-secondary btn-sm",
+            title = paste("Lower 95% confidence limit of the risk difference:",
+                          "-0.50 for hospitalization, -1.43 for ED visits.",
+                          "The largest protective effect the data support, and so",
+                          "the largest projected excess.")),
           span(class = "small text-muted ms-1",
             "Butler et al. 2021, Table 1 and Table 2 risk differences")
         )
@@ -259,14 +270,19 @@ carries the share-weighted average of the two, using the proportion set under
 *Composition of the partially vaccinated* in the sidebar. Its two risk cells are
 therefore displayed rather than edited.
 
-The Stronger and Weaker buttons set the full-series risks so that the risk
-difference against unvaccinated equals the lower or upper 95% confidence limit
-reported by Butler et al. Because the scenario moves children between these two
-strata alone, the projected excess is proportional to that risk difference, so
-these bounds carry directly through to the projection. Note that they also change
-the baseline, since most of the cohort is fully vaccinated, and that setting the
-hospitalization and ED limits together assumes both err in the same direction --
-they bracket the projection rather than forming a 95% interval around it.
+The three vaccine effectiveness buttons set the full-series risks so that the
+risk difference against unvaccinated equals the upper confidence limit (Most
+Conservative), the point estimate (Best Estimate), or the lower confidence limit
+(Least Conservative) reported by Butler et al. Conservative here means the
+assumption least favourable to the projection: the smallest protective effect the
+data support gives the smallest projected excess.
+
+Because the scenario moves children between these two strata alone, the projected
+excess is proportional to that risk difference, so these bounds carry directly
+through to the projection. Note that they also change the baseline, since most of
+the cohort is fully vaccinated, and that setting the hospitalization and ED limits
+together assumes both err in the same direction -- they bracket the projection
+rather than forming a 95% interval around it.
 
 Estimates account for direct effects of vaccination only. No indirect (herd)
 protection is assumed, so projected excess encounters should be read as a lower
@@ -375,7 +391,7 @@ server <- function(input, output, session) {
   # from unvaccinated equals a confidence limit, reading the unvaccinated risks
   # from the grid rather than a constant so the buttons respect an edited
   # reference. `local()` is load-bearing here for the same reason as above.
-  for (bd in c("lower", "upper")) local({
+  for (bd in c("lower", "point", "upper")) local({
     bound <- bd
     observeEvent(input[[paste0("rd_", bound)]], {
       g <- rv_apply_rd(gvals(), RD_BOUNDS[[bound]])
@@ -558,7 +574,7 @@ server <- function(input, output, session) {
         Parameter = c("Risk difference, hospitalization", "Risk difference, ED visit"),
         `Published value` = c("-0.40 (-0.50, -0.31)", "-1.22 (-1.43, -1.00)"),
         Source = rep(paste("Butler et al. 2021, Table 1 and Table 2;",
-                           "sets the Stronger and Weaker buttons"), 2),
+                           "sets the vaccine effectiveness buttons"), 2),
         check.names = FALSE, stringsAsFactors = FALSE),
       data.frame(
         Parameter = SCALARS$label,

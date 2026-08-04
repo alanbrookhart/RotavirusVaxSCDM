@@ -163,16 +163,22 @@ rv_scalar_defaults <- function() {
 # it -- so a bound on the risk difference maps directly onto a bound on the
 # excess, with no further assumption.
 #
-# Note the point estimates disagree with the risk table by 0.01 in each
-# direction: differencing the rounded risks gives -0.41 and -1.21, while the
-# paper reports -0.40 and -1.22. Both are rounded views of the same unrounded
-# quantity. Anchoring on the unvaccinated risk, as here, is the reading that
-# matches "set the risk difference to its confidence limit".
+# `point` is derived from the published risks rather than transcribed from the
+# risk-difference column, so that applying it restores the app's defaults
+# exactly. The two disagree by 0.01 in each direction: differencing the rounded
+# risks gives -0.41 and -1.21, while the paper's column reports -0.40 and -1.22.
+# Both are rounded views of the same unrounded quantity, but only the former
+# reproduces the letter -- taking -0.40 would put the full-series risk at 0.48
+# rather than the published 0.47. Deriving it also keeps all three bounds on one
+# basis: every one of them is "risk in the unvaccinated, plus this difference".
 
 rv_rd_bounds <- function() {
+  g <- rv_groups()
+  n <- nrow(g)
   list(
     lower = c(hosp = -0.50, ed = -1.43),   # larger protective effect
-    point = c(hosp = -0.40, ed = -1.22),
+    point = c(hosp = g$risk_h[n] - g$risk_h[1],
+              ed   = g$risk_e[n] - g$risk_e[1]),
     upper = c(hosp = -0.31, ed = -1.00)    # smaller protective effect
   )
 }
