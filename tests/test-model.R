@@ -152,6 +152,54 @@ cat(sprintf("Weight does move the baseline (w=0 vs w=100: %s vs %s): OK\n",
 check("Default weight is the Butler Table 1 person-time ratio",
   pc$w_default, 100 * 162196 / (162196 + 323558), 1e-12)
 
+cat("\nNo-harm constraint\n")
+cat(strrep("-", 100), "\n")
+
+# Inactive at the published values: every vaccinated risk is already below the
+# unvaccinated reference.
+cl <- rv_clamp_harm(g)
+check("Published values need no capping", length(cl$capped), 0, 0)
+stopifnot(identical(cl$groups$risk_h, g$risk_h), identical(cl$groups$risk_e, g$risk_e))
+cat("Published values pass through unchanged: OK\n")
+
+# A full-series risk above unvaccinated is capped, and the excess it would have
+# produced -- negative, i.e. withdrawing vaccination prevents encounters -- is
+# eliminated.
+g_bad <- g; g_bad$risk_h[nrow(g)] <- 1.50; g_bad$risk_e[nrow(g)] <- 5.00
+raw <- rv_project(g_bad, scen[["30%"]], sc)
+stopifnot(raw$excess$hosp < 0, raw$excess$cost_total < 0)
+cat(sprintf("Unconstrained harmful input gives a NEGATIVE excess (%.0f hosp, %s): as expected\n",
+  raw$excess$hosp, fmt_usd(raw$excess$cost_total)))
+
+cl_bad <- rv_clamp_harm(g_bad)
+check("Both harmful cells are reported", length(cl_bad$capped), 2, 0)
+check("Capped hosp risk equals unvaccinated", cl_bad$groups$risk_h[nrow(g)], g$risk_h[1], 1e-12)
+check("Capped ED risk equals unvaccinated",   cl_bad$groups$risk_e[nrow(g)], g$risk_e[1], 1e-12)
+fixed <- rv_project(cl_bad$groups, scen[["30%"]], sc)
+check("Capped input yields exactly zero excess", fixed$excess$cost_total, 0, 1e-6)
+
+# The constraint binds on a published estimate once the one-dose weight rises:
+# the blended ED risk crosses 4.36 at w = (4.36 - 4.23)/0.34 = 38.235%.
+thresh <- (4.36 - 4.23) / 0.34 * 100
+check("Blend crosses the unvaccinated ED risk at w=38.24%",
+  rv_blend_partial(thresh)[["ed"]], 4.36, 1e-9)
+check("Just below the threshold, nothing is capped",
+  length(rv_clamp_harm(rv_groups(thresh - 0.5))$capped), 0, 0)
+check("Just above it, the partial ED risk is capped",
+  length(rv_clamp_harm(rv_groups(thresh + 0.5))$capped), 1, 0)
+check("Default weight sits below the threshold",
+  rv_partial_components()$w_default < thresh, TRUE, 0)
+
+# Capping never raises a risk, and never touches the unvaccinated row.
+for (w in c(0, 50, 100)) {
+  cc <- rv_clamp_harm(rv_groups(w))
+  stopifnot(all(cc$groups$risk_h <= rv_groups(w)$risk_h + 1e-12),
+            all(cc$groups$risk_e <= rv_groups(w)$risk_e + 1e-12),
+            identical(cc$groups$risk_h[1], rv_groups(w)$risk_h[1]),
+            identical(cc$groups$risk_e[1], rv_groups(w)$risk_e[1]))
+}
+cat("Capping is monotone and leaves the unvaccinated reference alone: OK\n")
+
 cat("\nRisk-difference sensitivity (Butler Table 1 E18, Table 2 E59)\n")
 cat(strrep("-", 100), "\n")
 

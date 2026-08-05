@@ -66,7 +66,7 @@ group_grid <- function() {
     tags$tr(
       tags$th(g$label, scope = "row", class = "grid-label"),
       grid_cell(paste0("cur_",  g$id), g$share,         0.1,
-        paste(g$label, "current percent")),
+        paste(g$label, "pre-SCDM percent")),
       grid_cell(paste0("scen_", g$id), SCEN_DEFAULT[i], 0.1,
         paste(g$label, "scenario percent")),
       if (derived) derived_cell("blend_h") else
@@ -81,7 +81,7 @@ group_grid <- function() {
   tags$table(class = "table grid-table align-middle mb-1",
     tags$thead(tags$tr(
       tags$th("Vaccination group", style = "width: 30%;"),
-      tags$th("Current %"), tags$th("Scenario %"),
+      tags$th("Pre-SCDM %"), tags$th("Scenario %"),
       tags$th("Hosp. risk %"), tags$th("ED risk %")
     )),
     tags$tbody(rows),
@@ -258,7 +258,7 @@ Unit costs are per-episode costs in January 2025 USD; the societal perspective
 adds an indirect cost, applied identically to inpatient and ED episodes,
 representing two days of median weekly earnings plus out-of-pocket costs.
 
-The Current and Scenario columns are entered directly. Any pair of distributions
+The Pre-SCDM and Scenario columns are entered directly. Any pair of distributions
 can be compared; the 10%, 20% and 30% buttons fill the Scenario column with the
 published scenarios, which move that many percentage points from the fully
 vaccinated stratum into the unvaccinated one while holding the partially
@@ -329,7 +329,8 @@ server <- function(input, output, session) {
     rv_num(input$w_partial1, rv_partial_components()$w_default)
   })
 
-  gvals <- reactive({
+  # Entered values, before the no-harm constraint is applied.
+  entered <- reactive({
     g <- GROUPS
     g$share  <- vapply(GROUPS$id, function(i)
       rv_num(input[[paste0("cur_", i)]], GROUPS$share[GROUPS$id == i]), numeric(1))
@@ -348,8 +349,16 @@ server <- function(input, output, session) {
     g
   })
 
-  output$blend_h <- renderText(sprintf("%.4f", rv_blend_partial(w_partial1())[["hosp"]]))
-  output$blend_e <- renderText(sprintf("%.4f", rv_blend_partial(w_partial1())[["ed"]]))
+  # No vaccinated stratum may carry more risk than the unvaccinated. Applied
+  # here rather than inside rv_project(), which stays a pure calculator.
+  constrained <- reactive(rv_clamp_harm(entered()))
+  gvals <- reactive(constrained()$groups)
+
+  # Read the derived cells from the CONSTRAINED frame, so what the grid shows is
+  # what the model used -- the display must never disagree with the computation.
+  kp <- which(GROUPS$id == "partial")
+  output$blend_h <- renderText(sprintf("%.4f", gvals()$risk_h[kp]))
+  output$blend_e <- renderText(sprintf("%.4f", gvals()$risk_e[kp]))
 
   scen_share <- reactive({
     vapply(seq_len(nrow(GROUPS)), function(i)
@@ -442,7 +451,7 @@ server <- function(input, output, session) {
   # scalars as well as the grid: `rv_num()` reads a cleared box as 0, so a blank
   # cost silently zeroes a whole expenditure column and must be reported too.
   CELL_LABELS <- local({
-    prefixes <- c(cur = "current %", scen = "scenario %",
+    prefixes <- c(cur = "pre-SCDM %", scen = "scenario %",
                   rh = "hospitalization risk", re = "ED risk")
     ids <- character(0); labs <- character(0)
     for (p in names(prefixes)) {
@@ -468,6 +477,13 @@ server <- function(input, output, session) {
     if (length(blank)) {
       msgs <- c(msgs, list(sprintf("Empty, treated as 0: %s.",
         paste(CELL_LABELS[blank], collapse = "; "))))
+    }
+
+    capped <- constrained()$capped
+    if (length(capped)) {
+      msgs <- c(msgs, list(sprintf(
+        "Capped at the unvaccinated risk, since vaccination cannot increase risk: %s.",
+        paste(capped, collapse = "; "))))
     }
 
     if (!length(msgs)) return(NULL)
@@ -506,7 +522,7 @@ server <- function(input, output, session) {
     s <- res()$strata
     data.frame(
       `Vaccination stratum` = s$stratum,
-      `Share, baseline` = sprintf("%.1f%%", s$share_base),
+      `Share, pre-SCDM` = sprintf("%.1f%%", s$share_base),
       `Share, scenario` = sprintf("%.1f%%", s$share_scen),
       `Hospitalizations, baseline` = fmt_n(s$hosp_base),
       `Hospitalizations, scenario` = fmt_n(s$hosp_scen),

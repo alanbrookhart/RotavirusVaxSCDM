@@ -72,7 +72,7 @@ Two-year cumulative incidences come from Butler et al. (*Epidemiology* 2021;32:5
 
 ### Entering a scenario
 
-The Current and Scenario columns of the group grid are typed directly, so any pair of uptake distributions can be compared — including scenarios the published letter cannot express, such as children moving into partial vaccination rather than out of it altogether.
+The Pre-SCDM and Scenario columns of the group grid are typed directly, so any pair of uptake distributions can be compared — including scenarios the published letter cannot express, such as children moving into partial vaccination rather than out of it altogether.
 
 The **10%**, **20%** and **30%** buttons fill the Scenario column with the published scenarios, which move that many percentage points from the fully vaccinated stratum into the unvaccinated one while holding the partially vaccinated strata fixed. Because only two strata move and the risks are constants, the excess is exactly linear in the shift magnitude.
 
@@ -119,6 +119,14 @@ The published 95% confidence limits on the individual risks are retained in `rv_
 
 Two notes on the indirect cost that belong in any methods write-up. The $104.64 of out-of-pocket items is from Widdowson et al., CPI-inflated, but Widdowson's own forgone-earnings figure ($118/day in 2004, $202.40 inflated to 2025) is *excluded* and replaced by the BLS calculation — reasonable, since 2023 BLS data are fresher and using both would double-count, but not what the citation implies. And dividing median weekly earnings by seven yields a notional $159.57/day that no one actually forgoes; BLS reports earnings for full-time workers over a five-day week, so a lost workday is nearer $223.40. The five-day denominator would raise the indirect cost to $551.44 and the 30% estimate to about $105.8M. The current choice errs downward, consistent with the letter's framing of these as minimum estimates.
 
-Annual births remains a `sliderInput`; the three cost parameters (`c_hosp`, `c_ed`, `c_indirect`) are `numericInput`s. This is not cosmetic: `updateSliderInput()` round-trips a value through ionRangeSlider, which rounds it to the decimal count implied by `step`, and with `step >= 1` that is zero decimals — a reset once turned `c_indirect`'s then-unrounded `423.782857142857` into `424` and the app stopped reproducing the source spreadsheet. Typed numeric inputs do not coerce to a step grid, so exact values survive both initial load and reset. This still matters now that the cost is rounded to cents: `c_hosp` at `19251.56` and `c_ed` at `781.83` would both be flattened to whole dollars by a slider.
+All four population and cost parameters are sliders. **The three cost sliders must keep `step = 0.01`.** ionRangeSlider rounds a value to the decimal count implied by `step`, so an integer step flattens `19251.56` to `19252` on both initial render and reset — that is what once turned `c_indirect` into `424` and stopped the app reproducing the spreadsheet. Two decimals is safe only because every cost default is now a whole number of cents. Verified in a browser rather than assumed: any change to these steps needs the same check, because a value that survives `testServer` can still be rounded by the widget.
+
+## The no-harm constraint
+
+No vaccinated stratum may carry a higher risk than the unvaccinated. Without it, entering such a value makes the projection incoherent rather than merely pessimistic: the excess turns negative and the app reports that withdrawing vaccination *prevents* encounters. `rv_clamp_harm()` caps each vaccinated stratum at the unvaccinated risk for both outcomes and names any cell it altered, which the app shows above the results.
+
+The constraint is applied to the inputs, not inside `rv_project()`, which stays a pure calculator — this keeps the algebraic identities the tests rely on intact.
+
+It can bind on a published estimate. Butler et al. put the one-dose RV5 two-year ED risk at 4.57% against 4.36% unvaccinated — a point estimate in the harmful direction, with a confidence interval spanning no effect. The blended partial risk crosses 4.36% once the one-dose share passes **38.24%**, so raising that weight above the published 33.39% triggers the cap. At the published values the constraint is inactive and changes nothing.
 
 tpatient care, which is the binding constraint rather than the arithmetic.

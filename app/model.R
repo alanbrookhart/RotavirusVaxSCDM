@@ -115,14 +115,20 @@ rv_scalars <- function() {
       3622673, 3000000, 4200000, 1000, 3441539, 3803807,
       "CDC Vital Statistics Rapid Release No. 38 (provisional 2024); range +/-5%",
       "slider"),
+    # Cost sliders MUST use step = 0.01. ionRangeSlider rounds a value to the
+    # decimal count implied by `step`, so an integer step would flatten 19251.56
+    # to 19252 on both initial render and reset, and the app would stop
+    # reproducing the spreadsheet -- the bug fixed in 4a32e7b. Two decimals is
+    # safe only because every cost default is now a whole number of cents;
+    # verified in a browser, not merely assumed.
     s("c_hosp", "Direct medical cost per hospitalization ($)",
-      19251.56, 0, 60000, 10, 14438.67, 24064.45,
+      19251.56, 0, 60000, 0.01, 14438.67, 24064.45,
       "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
-      "numeric"),
+      "slider"),
     s("c_ed", "Direct medical cost per ED visit ($)",
-      781.83, 0, 4000, 1, 586.37, 977.29,
+      781.83, 0, 4000, 0.01, 586.37, 977.29,
       "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
-      "numeric"),
+      "slider"),
     # Spreadsheet "Indirect costs" cell N45 = H45 + P24, i.e. two days of
     # $1,117 weekly earnings taken over a 7-day week, plus $104.64 of median
     # out-of-pocket costs: 1117 / 7 * 2 + 104.64 = 423.782857142857...
@@ -134,11 +140,11 @@ rv_scalars <- function() {
     # footnote d's percentages to four decimals. test-model.R pins the gap and
     # proves it is due to this rounding alone.
     s("c_indirect", "Indirect (productivity) cost per episode ($)",
-      423.78, 0, 2000, 1, 317.84, 529.73,
+      423.78, 0, 2000, 0.01, 317.84, 529.73,
       paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk) plus",
             "out-of-pocket costs; applied identically to ED and inpatient",
             "episodes; range +/-25%"),
-      "numeric")
+      "slider")
   ))
 }
 
@@ -195,6 +201,47 @@ rv_apply_rd <- function(groups, rd) {
   groups$risk_h[n] <- groups$risk_h[1] + rd[["hosp"]]
   groups$risk_e[n] <- groups$risk_e[1] + rd[["ed"]]
   groups
+}
+
+
+# --- Constraint: vaccination cannot increase risk -----------------------------
+# A vaccinated stratum carrying a HIGHER risk than the unvaccinated makes the
+# projection incoherent rather than merely pessimistic: the excess turns
+# negative, so the app would report that withdrawing vaccination prevents
+# encounters. This caps every vaccinated stratum at the unvaccinated risk, for
+# both outcomes.
+#
+# The constraint is applied to the inputs, not inside `rv_project()`, which
+# stays a pure calculator. That keeps the algebraic identities the tests rely on
+# intact and makes the capping visible as a property of the entered values.
+#
+# Note it can bind on published inputs. Butler et al. estimate the one-dose RV5
+# two-year ED risk at 4.57% against 4.36% unvaccinated -- a point estimate in
+# the harmful direction, with a confidence interval spanning no effect. The
+# blended partial risk crosses 4.36% once the one-dose share passes 38.24%
+# (4.23 + 0.34w = 4.36), so raising that weight above the published 33.39%
+# eventually triggers the cap.
+
+#' Cap every vaccinated stratum's risk at the unvaccinated risk
+#'
+#' @param groups Data frame shaped like `rv_groups()`; row 1 is the unvaccinated
+#'   reference.
+#' @return A list with `groups` (constrained) and `capped`, a character vector
+#'   naming the cells that were altered -- empty when the constraint is inactive.
+rv_clamp_harm <- function(groups) {
+  if (nrow(groups) < 2) return(list(groups = groups, capped = character(0)))
+  capped <- character(0)
+  for (i in 2:nrow(groups)) {
+    if (isTRUE(groups$risk_h[i] > groups$risk_h[1])) {
+      capped <- c(capped, paste(groups$label[i], "hospitalization risk"))
+      groups$risk_h[i] <- groups$risk_h[1]
+    }
+    if (isTRUE(groups$risk_e[i] > groups$risk_e[1])) {
+      capped <- c(capped, paste(groups$label[i], "ED visit risk"))
+      groups$risk_e[i] <- groups$risk_e[1]
+    }
+  }
+  list(groups = groups, capped = capped)
 }
 
 
@@ -314,8 +361,20 @@ rv_project <- function(groups, scen_share, scalars, societal = TRUE,
 
 # --- Formatting helpers -------------------------------------------------------
 
-fmt_n   <- function(x, digits = 0) formatC(x, format = "f", digits = digits, big.mark = ",")
-fmt_usd <- function(x) paste0(ifelse(x < 0, "-$", "$"), fmt_n(abs(x)))
+# Strips a leading minus from a value that rounds to zero. Without this, an
+# excess of -1e-14 -- which the no-harm cap routinely produces, since capping
+# makes two risks equal and their difference lands a few ulp below zero --
+# displays as "-0".
+fmt_n <- function(x, digits = 0) {
+  s <- formatC(x, format = "f", digits = digits, big.mark = ",")
+  sub("^-(0(\\.0+)?)$", "\\1", s)
+}
+# Sign keys off the ROUNDED magnitude, so a value a few ulp below zero prints
+# as "$0" rather than "-$0".
+fmt_usd <- function(x) {
+  n <- fmt_n(abs(x))
+  paste0(ifelse(x < 0 & !grepl("^0(\\.0+)?$", n), "-$", "$"), n)
+}
 
 fmt_usd_short <- function(x) {
   s <- ifelse(x < 0, "-", "")
