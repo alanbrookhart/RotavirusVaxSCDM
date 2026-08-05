@@ -86,15 +86,17 @@ The app carries **one** partially vaccinated stratum whose risks are the share-w
 
 Three buttons set the full-series risks so that the risk difference against unvaccinated equals a confidence limit or the point estimate from Butler et al. — Table 1 cell `E18`, −0.40 (−0.50, −0.31) for hospitalization, and Table 2 cell `E59`, −1.22 (−1.43, −1.00) for ED visits. Both risks move together, and the unvaccinated risk is read from the grid rather than a constant, so an edited reference is honoured.
 
-| Button | Risk difference | Full-series risk | Excess, 30% scenario |
+| Button | Published risk difference | Full-series risk applied | Excess, 30% scenario |
 | --- | --- | --- | --- |
 | Most Conservative | −0.31 / −1.00 | 0.57 / 3.36 | 3,369 hosp, $79.4M |
-| Best Estimate | −0.41 / −1.21 | 0.47 / 3.15 | 4,456 hosp, $103.5M |
+| Best Estimate | −0.40 / −1.22 | 0.47 / 3.15 | 4,456 hosp, $103.5M |
 | Least Conservative | −0.50 / −1.43 | 0.38 / 2.93 | 5,434 hosp, $125.7M |
+
+The first column is Butler et al.'s reported figures throughout. For the two confidence limits the applied risk follows from them exactly (`0.88 − 0.31 = 0.57`). For the point estimate it does not, and that is the source's own rounding: `0.88 − 0.40` is 0.48, not the published 0.47.
 
 *Conservative* follows the convention of naming the assumption least favourable to the claim being advanced: the smallest protective effect the data support yields the smallest projected excess, which is the direction consistent with the letter's framing of its figures as minimum estimates.
 
-**Best Estimate** is derived from the published risks rather than transcribed from the risk-difference column, so applying it is a no-op that restores the defaults. Taking the paper's rounded −0.40 instead would put the full-series risk at 0.48 rather than the published 0.47, and the app would stop reproducing the letter. Deriving it also keeps all three buttons on one basis — every one is "risk in the unvaccinated, plus this difference".
+**Best Estimate** therefore restores the published *risks* rather than applying the published *risk difference*. Differencing 0.47 and 0.88 gives −0.41, and 3.15 and 4.36 gives −1.21 — both 0.01 from the reported values, because the paper rounds the risks and the difference independently. Restoring the risks is what makes the button a no-op and keeps the app reproducing the letter; applying −0.40 would silently move the full-series risk to 0.48.
 
 That contrast is the one Butler et al. actually estimated and bootstrapped, and because the scenario moves people strictly between the full-series and unvaccinated strata, the projected excess is exactly linear in it. A bound on the risk difference therefore maps directly onto a bound on the excess, with no further assumption. At the 30% scenario this gives roughly $79M to $126M around a $103.5M point estimate.
 

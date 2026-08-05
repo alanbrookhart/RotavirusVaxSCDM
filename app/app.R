@@ -199,11 +199,17 @@ ui <- page_navbar(
                           "-0.31 for hospitalization, -1.00 for ED visits.",
                           "The smallest protective effect the data support, and so",
                           "the smallest projected excess.")),
+          # Cites Butler's reported risk difference (-0.40 / -1.22) as the
+          # source figure, but states the risks first, because those are what
+          # the button actually restores. The two are not interchangeable:
+          # 0.88 - 0.40 is 0.48, not the published 0.47, so applying the
+          # reported difference would stop the app reproducing the letter.
           actionButton("rd_point", "Best Estimate",
             class = "btn-outline-secondary btn-sm",
-            title = paste("Point estimate: the published two-year risks,",
-                          "0.47 for hospitalization and 3.15 for ED visits,",
-                          "a risk difference of -0.41 and -1.21.")),
+            title = paste("Point estimate: restores the published two-year",
+                          "risks, 0.47 for hospitalization and 3.15 for ED",
+                          "visits -- the risk difference Butler et al. report",
+                          "as -0.40 and -1.22.")),
           actionButton("rd_lower", "Least Conservative",
             class = "btn-outline-secondary btn-sm",
             title = paste("Lower 95% confidence limit of the risk difference:",
