@@ -115,35 +115,40 @@ rv_scalars <- function() {
       3622673, 3000000, 4200000, 1000, 3441539, 3803807,
       "CDC Vital Statistics Rapid Release No. 38 (provisional 2024); range +/-5%",
       "slider"),
-    # Cost sliders MUST use step = 0.01. ionRangeSlider rounds a value to the
-    # decimal count implied by `step`, so an integer step would flatten 19251.56
-    # to 19252 on both initial render and reset, and the app would stop
-    # reproducing the spreadsheet -- the bug fixed in 4a32e7b. Two decimals is
-    # safe only because every cost default is now a whole number of cents;
-    # verified in a browser, not merely assumed.
+    # Costs are whole dollars, by decision: the sliders step by $1 and the
+    # defaults are rounded to match. The defaults MUST stay whole numbers.
+    # ionRangeSlider rounds a value to the decimal count implied by `step`, so a
+    # fractional default against step = 1 would display and return the rounded
+    # figure while the model held the exact one -- the app would disagree with
+    # itself, and a reset would silently change the answer. Keeping default and
+    # step on the same grid is what prevents that.
+    #
+    # Karve's CPI-inflated figures are 19251.56 and 781.83. Rounding them, with
+    # the indirect cost below, puts this model $62,330 above the spreadsheet's
+    # baseline and 0.008% above its excess figures. Nothing the letter reports
+    # moves: both printed figures stay $34.5M and $103.5M, and footnote d stays
+    # 6.3% and 18.8%. The Spreadsheet equivalence block in test-model.R restores
+    # all three unrounded values and confirms the cells still reproduce.
     s("c_hosp", "Direct medical cost per hospitalization ($)",
-      19251.56, 0, 60000, 0.01, 14438.67, 24064.45,
-      "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
+      19252, 0, 60000, 1, 14439, 24064,
+      "Karve et al. 2014, CPI-inflated to Jan 2025 ($19,251.56), to the dollar",
       "slider"),
     s("c_ed", "Direct medical cost per ED visit ($)",
-      781.83, 0, 4000, 0.01, 586.37, 977.29,
-      "Karve et al. 2014, CPI-inflated to Jan 2025; range +/-25%",
+      782, 0, 4000, 1, 586, 977,
+      "Karve et al. 2014, CPI-inflated to Jan 2025 ($781.83), to the dollar",
       "slider"),
     # Spreadsheet "Indirect costs" cell N45 = H45 + P24, i.e. two days of
     # $1,117 weekly earnings taken over a 7-day week, plus $104.64 of median
     # out-of-pocket costs: 1117 / 7 * 2 + 104.64 = 423.782857142857...
     #
-    # Rounded here to whole cents, because it is a cost. The spreadsheet never
-    # rounded it -- Excel carries the repeating decimal from 1117/7 straight
-    # through -- so its dollar cells sit $17 to $420 above this model. Nothing
-    # the letter reports moves: both $34.5M and $103.5M are unchanged, as are
-    # footnote d's percentages to four decimals. test-model.R pins the gap and
-    # proves it is due to this rounding alone.
+    # Rounded to $424 with the other two. The repeating decimal is an unrounded
+    # Excel intermediate rather than a chosen figure -- 7 does not divide 1117 --
+    # so there was never a cost of $423.782857142857 to preserve.
     s("c_indirect", "Indirect (productivity) cost per episode ($)",
-      423.78, 0, 2000, 0.01, 317.84, 529.73,
-      paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk) plus",
-            "out-of-pocket costs; applied identically to ED and inpatient",
-            "episodes; range +/-25%"),
+      424, 0, 2000, 1, 318, 530,
+      paste("2 days of median weekly earnings (BLS CPS 2023, $1,117/wk over a",
+            "7-day week) plus $104.64 median out-of-pocket costs, to the",
+            "dollar; applied identically to ED and inpatient episodes"),
       "slider")
   ))
 }
