@@ -109,9 +109,9 @@ Two caveats. Because the buttons change the full-series risk, they also move the
 | --- | --- | --- |
 | Annual U.S. births | 3,622,673 | CDC Vital Statistics Rapid Release No. 38 (provisional 2024) |
 | Uptake distribution | 13.9 / 15.3 / 70.7 % | Sederdahl et al. *Pediatrics* 2019 |
-| One dose, % of partially vaccinated | 33.390564 | Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558) |
-| Two-year hospitalization risks | 0.88 / 0.673442 / 0.47 % | Butler et al. *Epidemiology* 2021, Table 1; middle value is the weighted blend of 0.80 and 0.61 |
-| Two-year ED visit risks | 4.36 / 4.343528 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2; middle value is the weighted blend of 4.57 and 4.23 |
+| One dose, % of partially vaccinated | 33.4 | Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558), to one decimal |
+| Two-year hospitalization risks | 0.88 / 0.6735 / 0.47 % | Butler et al. *Epidemiology* 2021, Table 1; middle value is the weighted blend of 0.80 and 0.61 |
+| Two-year ED visit risks | 4.36 / 4.3436 / 3.15 % | Butler et al. *Epidemiology* 2021, Table 2; middle value is the weighted blend of 4.57 and 4.23 |
 | Risk difference, full series vs unvaccinated | −0.40 (−0.50, −0.31) hosp; −1.22 (−1.43, −1.00) ED | Butler et al. 2021, Table 1 `E18` and Table 2 `E59`; drives the vaccine effectiveness buttons |
 | Cost per hospitalization (direct) | \$19,252 | Karve et al. 2014, CPI-inflated to January 2025 (\$19,251.56), to the dollar |
 | Cost per ED visit (direct) | \$782 | Karve et al. 2014, CPI-inflated to January 2025 (\$781.83), to the dollar |
@@ -123,7 +123,7 @@ Two notes on the indirect cost that belong in any methods write-up. The $104.64 
 
 Costs are carried as **whole dollars**, by decision, and the three cost sliders step by $1. **Their defaults must stay whole numbers.** ionRangeSlider rounds a value to the decimal count implied by `step`, so a fractional default against `step = 1` would display and return the rounded figure while the model held the exact one — the app would disagree with itself, and a reset would silently change the answer. Keeping default and step on the same grid is what prevents that, and it needs checking in a browser rather than only in `testServer`, since a value that survives the test harness can still be rounded by the widget.
 
-Rounding the three costs puts this model **$62,330 above** the spreadsheet's baseline and **0.008% above** its excess figures. Nothing the letter reports moves: both printed figures stay $34.5M and $103.5M, and footnote d stays 6.3% and 18.8%. `tests/test-model.R` asserts exactly that — it compares the reported strings rather than a dollar bound, so a future change that pushed the rounding past reporting precision would fail rather than pass quietly. Its *Spreadsheet equivalence* block restores all three unrounded inputs (Karve's cents and the `1117/7` intermediate) and confirms `W23` and `X24`–`X26` still reproduce to within $1, which is the proof that the rounding is the only difference.
+Two roundings separate this model from the spreadsheet: the three whole-dollar costs, and the one-decimal weight. Together they put the baseline **$64,499 above** the spreadsheet's, with the excess **0.008% above** its figures and the baseline counts higher by 0.10 of a hospitalization and 0.18 of an ED visit. Nothing the letter reports moves: both printed figures stay $34.5M and $103.5M, and footnote d stays 6.3% and 18.8%. `tests/test-model.R` asserts exactly that — it compares the reported strings rather than a dollar bound, so a future change that pushed the rounding past reporting precision would fail rather than pass quietly. Its *Spreadsheet equivalence* block undoes both roundings — Karve's cents, the `1117/7` intermediate, and the exact person-time ratio — and confirms all six cells (`K19`, `K60`, `W23`, `X24`–`X26`) reproduce exactly, which is the proof that those roundings are the only difference.
 
 ## The no-harm constraint
 

@@ -94,6 +94,18 @@ group_grid <- function() {
   )
 }
 
+# Tooltip for one vaccine-effectiveness button. Derives the full-series risks by
+# applying the bound to the published unvaccinated risks, so the numbers shown
+# are the numbers the button produces rather than a hand-maintained copy.
+rd_tooltip <- function(bound, note) {
+  a <- rv_apply_rd(GROUPS, RD_BOUNDS[[bound]])
+  n <- nrow(GROUPS)
+  sprintf(paste("Assumed two-year risks -- full series %.2f%% hospitalization",
+                "and %.2f%% ED visits, against %.2f%% and %.2f%% in the",
+                "unvaccinated. %s"),
+    a$risk_h[n], a$risk_e[n], a$risk_h[1], a$risk_e[1], note)
+}
+
 scalar_input <- function(row) {
   tags$div(
     title = row$source,
@@ -164,7 +176,7 @@ ui <- page_navbar(
                     "person-time ratio in Butler Table 1,",
                     "162196/(162196+323558)."),
       numericInput("w_partial1", "One dose, % of partially vaccinated",
-        value = round(rv_partial_components()$w_default, 6),
+        value = rv_partial_components()$w_default,
         min = 0, max = 100, step = 0.1, width = "100%")
     ),
     div(class = "small text-muted mb-2",
@@ -193,30 +205,30 @@ ui <- page_navbar(
         # same direction as the projection they produce.
         div(class = "d-flex gap-2 align-items-center mt-2 flex-wrap",
           span(class = "small text-muted me-1", "Vaccine effectiveness assumption:"),
+          # Tooltips state the assumed RISKS -- full series against unvaccinated
+          # -- and no risk differences. A risk difference invites the reader to
+          # check it against the risks, and the two disagree by 0.01 in the
+          # source: 0.47 - 0.88 is -0.41 where Butler's column reports -0.40.
+          #
+          # Built from rv_rd_bounds() applied to the published unvaccinated
+          # risks, so the figures shown cannot drift from what the buttons do.
+          # They describe the published starting point; if the unvaccinated risk
+          # has been edited, the buttons recompute against the edited value and
+          # the resulting full-series risk will differ from the tooltip.
           actionButton("rd_upper", "Most Conservative",
             class = "btn-outline-secondary btn-sm",
-            title = paste("Upper 95% confidence limit of the risk difference:",
-                          "-0.31 for hospitalization, -1.00 for ED visits.",
-                          "The smallest protective effect the data support, and so",
-                          "the smallest projected excess.")),
-          # States the risks only. Quoting a risk difference here invites the
-          # reader to check it against the risks, and the two disagree by 0.01
-          # in the source: 0.47 - 0.88 is -0.41 where Butler's column reports
-          # -0.40. The risks are what this button restores, and they are
-          # unambiguous.
+            title = rd_tooltip("upper",
+              "The smallest protective effect the data support, and so the smallest projected excess.")),
           actionButton("rd_point", "Best Estimate",
             class = "btn-outline-secondary btn-sm",
-            title = paste("Point estimate: restores the published two-year",
-                          "risks, 0.47 for hospitalization and 3.15 for ED",
-                          "visits.")),
+            title = rd_tooltip("point",
+              "The published point estimates.")),
           actionButton("rd_lower", "Least Conservative",
             class = "btn-outline-secondary btn-sm",
-            title = paste("Lower 95% confidence limit of the risk difference:",
-                          "-0.50 for hospitalization, -1.43 for ED visits.",
-                          "The largest protective effect the data support, and so",
-                          "the largest projected excess.")),
+            title = rd_tooltip("lower",
+              "The largest protective effect the data support, and so the largest projected excess.")),
           span(class = "small text-muted ms-1",
-            "Butler et al. 2021, Table 1 and Table 2 risk differences")
+            "Butler et al. 2021, Table 1 and Table 2")
         )
       )
     ),
@@ -429,7 +441,7 @@ server <- function(input, output, session) {
       }
     }
     updateNumericInput(session, "w_partial1",
-      value = round(rv_partial_components()$w_default, 6))
+      value = rv_partial_components()$w_default)
     for (i in seq_len(nrow(SCALARS))) {
       if (identical(SCALARS$widget[i], "slider")) {
         updateSliderInput(session, SCALARS$id[i], value = SCALARS$default[i])

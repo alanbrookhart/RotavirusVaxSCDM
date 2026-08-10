@@ -28,18 +28,20 @@ cat(strrep("-", 100), "\n")
 # totals are the spreadsheet's current-uptake figures.
 b <- rv_project(g, g$share, sc, societal = TRUE)
 
-check("Hospitalizations (xlsx K19)", b$baseline$hosp_total,  20201.714152, 0.01)
-check("ED visits (xlsx K60)",        b$baseline$ed_total,   126708.413902, 0.01)
+# These are the MODEL's own figures, not the spreadsheet's. Two roundings are
+# deliberate and both move the baseline slightly: the three cost inputs are whole
+# dollars where the spreadsheet carries Karve's cents and an unrounded 1117/7
+# intermediate, and the one-dose weight is the person-time ratio to one decimal.
+# The weight moves the counts as well as the cost -- by 0.10 of a hospitalization
+# and 0.18 of an ED visit, or 0.0005%.
+#
+# The reproduction proof lives in the "Spreadsheet equivalence" block below,
+# which restores every rounded input and recovers all six cells exactly. If that
+# block passes and these fail, a default moved; if both fail, the model diverged.
+check("Hospitalizations, model default", b$baseline$hosp_total,  20201.813524, 0.001)
+check("ED visits, model default",        b$baseline$ed_total,   126708.591726, 0.001)
+check("Total expenditures, model default", b$baseline$cost_total, 550301444.52, 0.01)
 check("Zero excess when scenario equals current", b$excess$cost_total, 0, 1e-6)
-
-# Dollar figures are asserted against this model's own arithmetic to the cent,
-# NOT against the spreadsheet, because all three cost inputs are deliberately
-# rounded to whole dollars while the spreadsheet carries Karve's cents and an
-# unrounded 1117/7 intermediate.
-# The reproduction proof lives in the "Spreadsheet equivalence" block below: it
-# shows that restoring the unrounded intermediate recovers W23 and X24-X26
-# exactly, so this rounding is the only difference between the two.
-check("Total expenditures, whole-dollar costs", b$baseline$cost_total, 550299274.82, 0.01)
 
 cat("\nPrefill scenario columns match spreadsheet rows J23-J26 / J31-J34 / J41-J44\n")
 cat(strrep("-", 100), "\n")
@@ -80,21 +82,24 @@ for (s in names(expected)) {
 cat("\nSpreadsheet equivalence: the whole-dollar rounding is the ONLY difference\n")
 cat(strrep("-", 100), "\n")
 
-# Restore all three of the spreadsheet's unrounded cost inputs -- Karve's cents
-# and the Indirect costs!N45 intermediate -- and the model must reproduce W23 and
-# X24-X26 to within $1. This is the proof that whole-dollar rounding is the only
-# thing separating the two. If this block fails, the model and the spreadsheet
-# have genuinely diverged; if only the block above fails, a cost default moved.
+# Undo BOTH deliberate roundings -- the whole-dollar costs and the one-decimal
+# weight -- and the model must reproduce all six spreadsheet cells. It does so
+# exactly, which is the proof that those two roundings are the only thing
+# separating this model from the source.
 sc_x <- sc
-sc_x$c_hosp    <- 19251.56
-sc_x$c_ed      <- 781.83
+sc_x$c_hosp     <- 19251.56
+sc_x$c_ed       <- 781.83
 sc_x$c_indirect <- 1117 / 7 * 2 + 104.64
-check("Baseline expenditures (xlsx W23)",
-  rv_project(g, g$share, sc_x)$baseline$cost_total, 550236945.15, 1)
+g_x  <- rv_groups(100 * 162196 / (162196 + 323558))
+b_x  <- rv_project(g_x, g_x$share, sc_x)
+
+check("Hospitalizations (xlsx K19)",   b_x$baseline$hosp_total,  20201.714152, 0.001)
+check("ED visits (xlsx K60)",          b_x$baseline$ed_total,   126708.413902, 0.001)
+check("Baseline expenditures (xlsx W23)", b_x$baseline$cost_total, 550236945.15, 1)
 xls <- c("10%" = 34508431.45, "20%" = 69016862.91, "30%" = 103525294.36)
 for (s in names(xls)) {
   check(sprintf("Excess expenditures, %s (xlsx X2%s)", s, substr(s, 1, 1)),
-    rv_project(g, scen[[s]], sc_x)$excess$cost_total, xls[[s]], 1)
+    rv_project(g_x, scen[[s]], sc_x)$excess$cost_total, xls[[s]], 1)
 }
 
 # The rounding must stay below reporting precision. Asserted on what the letter
@@ -103,7 +108,7 @@ for (s in names(xls)) {
 # whether the published figures still hold.
 for (s in c("10%", "30%")) {
   rounded <- fmt_usd_short(rv_project(g, scen[[s]], sc)$excess$cost_total)
-  exact   <- fmt_usd_short(rv_project(g, scen[[s]], sc_x)$excess$cost_total)
+  exact   <- fmt_usd_short(rv_project(g_x, scen[[s]], sc_x)$excess$cost_total)
   if (!identical(rounded, exact)) {
     stop(sprintf("Rounding changed the reported %s figure: %s vs %s", s, rounded, exact))
   }
@@ -113,14 +118,14 @@ for (s in c("10%", "30%")) {
 # Footnote d's percentages must still round to the published 6.3% and 18.8%.
 for (s in c("10%", "30%")) {
   pr <- rv_project(g, scen[[s]], sc)$excess$pct_cost
-  px <- rv_project(g, scen[[s]], sc_x)$excess$pct_cost
+  px <- rv_project(g_x, scen[[s]], sc_x)$excess$pct_cost
   check(sprintf("Footnote d %s, whole-dollar vs exact costs", s), round(pr, 1), round(px, 1), 1e-9)
 }
 
 # Relative size of the rounding, so a future change that inflates it is visible
 # in the output rather than silently absorbed.
 dev <- abs(rv_project(g, scen[["30%"]], sc)$excess$cost_total /
-           rv_project(g, scen[["30%"]], sc_x)$excess$cost_total - 1)
+           rv_project(g_x, scen[["30%"]], sc_x)$excess$cost_total - 1)
 check("Rounding shifts the 30% excess by under 0.05%", dev < 5e-4, TRUE, 0)
 cat(sprintf("  (actual relative shift: %.5f%%)\n", 100 * dev))
 
@@ -175,8 +180,17 @@ stopifnot(diff(base) != 0)
 cat(sprintf("Weight does move the baseline (w=0 vs w=100: %s vs %s): OK\n",
   fmt_usd(base[1]), fmt_usd(base[2])))
 
-check("Default weight is the Butler Table 1 person-time ratio",
-  pc$w_default, 100 * 162196 / (162196 + 323558), 1e-12)
+# The weight is the person-time ratio ROUNDED to one decimal, matching the
+# sidebar input's step so registry default and widget sit on the same grid.
+check("Default weight is the rounded person-time ratio",
+  pc$w_default, 33.4, 1e-12)
+check("...which is the Butler Table 1 ratio to one decimal",
+  pc$w_default, round(100 * 162196 / (162196 + 323558), 1), 1e-12)
+check("Rounding the weight moves the baseline under $5,000", abs(
+  rv_project(rv_groups(pc$w_default), rv_groups(pc$w_default)$share, sc)$baseline$cost_total -
+  rv_project(rv_groups(100 * 162196 / (162196 + 323558)),
+             rv_groups(100 * 162196 / (162196 + 323558))$share, sc)$baseline$cost_total) < 5000,
+  TRUE, 0)
 
 cat("\nNo-harm constraint\n")
 cat(strrep("-", 100), "\n")

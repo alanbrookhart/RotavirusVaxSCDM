@@ -56,7 +56,12 @@ rv_partial_components <- function() {
   list(
     one_dose  = c(hosp = 0.80, ed = 4.57),   # Butler Table 1/2, partial RV5 x1
     two_doses = c(hosp = 0.61, ed = 4.23),   # Butler Table 1/2, partial RV5 x2
-    w_default = 100 * 162196 / (162196 + 323558)
+    # Rounded to one decimal, which is also the sidebar input's step, so the
+    # registry default and the widget sit on the same grid. Written as the
+    # rounded quotient rather than the literal 33.4 to keep the derivation
+    # visible. Rounding moves the baseline by $2,170 (0.0004%) and cannot touch
+    # the excess at all, since the partially vaccinated are held fixed.
+    w_default = round(100 * 162196 / (162196 + 323558), 1)
   )
 }
 
