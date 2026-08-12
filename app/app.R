@@ -50,31 +50,19 @@ grid_cell <- function(id, value, step, aria) {
   tags$td(ni)
 }
 
-# The partially vaccinated risks are not typed. They are the share-weighted
-# average of the one- and two-dose RV5 levels, set by the weight in the sidebar,
-# so they are rendered read-only. Keeping them derived rather than editable also
-# means the displayed rounding costs nothing: the model uses the exact blend
-# while the cell shows four decimals.
-derived_cell <- function(output_id) {
-  tags$td(class = "derived-cell", textOutput(output_id, inline = TRUE))
-}
-
 group_grid <- function() {
   rows <- lapply(seq_len(nrow(GROUPS)), function(i) {
     g <- GROUPS[i, ]
-    derived <- identical(g$id, "partial")
     tags$tr(
       tags$th(g$label, scope = "row", class = "grid-label"),
       grid_cell(paste0("cur_",  g$id), g$share,         0.1,
         paste(g$label, "pre-SCDM percent")),
       grid_cell(paste0("scen_", g$id), SCEN_DEFAULT[i], 0.1,
         paste(g$label, "scenario percent")),
-      if (derived) derived_cell("blend_h") else
-        grid_cell(paste0("rh_", g$id), g$risk_h, 0.01,
-          paste(g$label, "hospitalization risk percent")),
-      if (derived) derived_cell("blend_e") else
-        grid_cell(paste0("re_", g$id), g$risk_e, 0.01,
-          paste(g$label, "ED visit risk percent"))
+      grid_cell(paste0("rh_", g$id), g$risk_h, 0.01,
+        paste(g$label, "AGE-related hospitalization risk percent")),
+      grid_cell(paste0("re_", g$id), g$risk_e, 0.01,
+        paste(g$label, "AGE-related ED visit risk percent"))
     )
   })
 
@@ -145,7 +133,6 @@ ui <- page_navbar(
     .grid-table tfoot td { padding-top: .1rem; }
     .grid-sum { font-size: .82rem; color: #64748b; }
     .grid-sum.warn { color: #b45309; font-weight: 600; }
-    .derived-cell { color: #475569; font-style: italic; padding-left: .85rem; }
   "))),
 
   sidebar = sidebar(
@@ -164,25 +151,6 @@ ui <- page_navbar(
     hr(),
     h6("Population and costs", class = "text-uppercase text-muted mb-1"),
     lapply(seq_len(nrow(SCALARS)), function(i) scalar_input(SCALARS[i, ])),
-
-    hr(),
-    h6("Composition of the partially vaccinated",
-      class = "text-uppercase text-muted mb-1"),
-    div(
-      title = paste("Sederdahl et al. report only a single lumped 15.3%",
-                    "partially vaccinated. This weight apportions it between",
-                    "the one- and two-dose RV5 levels, whose two-year risks",
-                    "Butler et al. report separately. Default is the",
-                    "person-time ratio in Butler Table 1,",
-                    "162196/(162196+323558)."),
-      numericInput("w_partial1", "One dose, % of partially vaccinated",
-        value = rv_partial_components()$w_default,
-        min = 0, max = 100, step = 0.1, width = "100%")
-    ),
-    div(class = "small text-muted mb-2",
-      "Sets the blended risks in the grid. Has no effect on the projected",
-      "excess, since the partially vaccinated are held fixed across scenarios;",
-      "it moves the baseline only."),
 
     actionButton("reset", "Reset to published values",
       class = "btn-outline-secondary btn-sm mt-2")
@@ -268,24 +236,26 @@ cost         = sum(hospitalizations) x unit_cost_hosp
              + sum(ED visits)        x unit_cost_ED
 ```
 
-Two-year cumulative incidences of AGE-related hospitalization and emergency
+Two-year cumulative incidence estimates of AGE-related hospitalization and emergency
 department visits come from Butler et al. (*Epidemiology* 2021), estimated with
 inverse probability of censoring weighting in a commercially insured birth cohort.
 Unit costs are per-episode costs in January 2025 USD; the societal perspective
 adds an indirect cost, applied identically to inpatient and ED episodes,
 representing two days of median weekly earnings plus out-of-pocket costs.
 
-The Routine (pre-SCDM) and SCDM Scenario columns are entered directly. Any pair of distributions
-can be compared; the 10%, 20% and 30% buttons fill the SCDM Scenario column with
-the published scenarios, which move that many percentage points from the fully
-vaccinated stratum into the unvaccinated one while holding the partially
-vaccinated stratum fixed.
+The Routine (pre-SCDM) and SCDM Scenario columns are entered directly. Any pair of distributions can be compared; the 10%, 20% and 30% buttons fill the SCDM Scenario column with the published scenarios, which move that many percentage points from the fully vaccinated stratum into the unvaccinated while holding the partially vaccinated stratum fixed.
 
-Butler et al. estimate separate risks for children who received one dose and two
-doses of the three-dose RV5 series. The partially vaccinated row shown here
-carries the share-weighted average of the two, using the proportion set under
-*Composition of the partially vaccinated* in the sidebar. Its two risk cells are
-therefore displayed rather than edited.
+Butler et al. estimate separate risks for children who are (a) unvaccinated; (b)
+partially vaccinated with one dose of the three-dose RV5 series; (c) partially
+vaccinated with two doses; and (d) fully vaccinated with three doses. The
+partially vaccinated levels are combined into the single stratum shown here,
+carrying the two-year risks reported in the letter: 0.67% for AGE-related
+hospitalization and 4.34% for AGE-related ED visits, against 0.88% and 4.36% in
+the unvaccinated and 0.47% and 3.15% in the fully vaccinated.
+
+Combining them costs nothing. Both partial levels are held fixed between the two
+uptake columns, so their contribution cancels in the difference and the
+projected excess is identical however the group is split.
 
 The three vaccine effectiveness buttons set the fully vaccinated risks so that the
 risk difference against unvaccinated equals the upper confidence limit (Most
@@ -294,17 +264,9 @@ Conservative), the point estimate (Best Estimate), or the lower confidence limit
 assumption least favourable to the projection: the smallest protective effect the
 data support gives the smallest projected excess.
 
-Because the scenario moves children between these two strata alone, the projected
-excess is proportional to that risk difference, so these bounds carry directly
-through to the projection.
+Because the scenario only moves children from the fully vaccinated stratum to the unvaccinated stratum, the projected excess is proportional to that risk difference.
 
-Estimates account for direct effects of vaccination only. No indirect (herd)
-protection is assumed, so projected excess encounters should be read as a lower
-bound: indirect protection reduces rotavirus burden in unvaccinated children,
-but declining coverage would erode that protection as well, and the net direction
-of the bias depends on how strongly transmission responds to coverage. The
-projection is also restricted to children under two years and relies on
-AGE-coded encounters, which have imperfect sensitivity."
+Estimates account for direct effects of vaccination only. No indirect (herd) protection is assumed, so projected excess encounters should be read as a lower bound: indirect protection reduces rotavirus burden in unvaccinated children, but declining coverage would erode that protection as well, and the net direction of the bias depends on how strongly transmission responds to coverage. The projection is also restricted to children under two years and relies on AGE-coded encounters, which have imperfect sensitivity."
         )
       )
     ),
@@ -323,12 +285,6 @@ AGE-coded encounters, which have imperfect sensitivity."
 
 server <- function(input, output, session) {
 
-  # Percent of the partially vaccinated who received one dose. Drives the
-  # blended risks for that stratum; nothing else reads it.
-  w_partial1 <- reactive({
-    rv_num(input$w_partial1, rv_partial_components()$w_default)
-  })
-
   # Entered values, before the no-harm constraint is applied.
   entered <- reactive({
     g <- GROUPS
@@ -338,14 +294,6 @@ server <- function(input, output, session) {
       rv_num(input[[paste0("rh_", i)]], GROUPS$risk_h[GROUPS$id == i]), numeric(1))
     g$risk_e <- vapply(GROUPS$id, function(i)
       rv_num(input[[paste0("re_", i)]], GROUPS$risk_e[GROUPS$id == i]), numeric(1))
-
-    # The partially vaccinated row has no input cells -- its risks are derived
-    # from the weight, at full precision. `rv_num` above fell back to the
-    # registry defaults for it; overwrite with the live blend.
-    b <- rv_blend_partial(w_partial1())
-    k <- which(GROUPS$id == "partial")
-    g$risk_h[k] <- b[["hosp"]]
-    g$risk_e[k] <- b[["ed"]]
     g
   })
 
@@ -353,12 +301,6 @@ server <- function(input, output, session) {
   # here rather than inside rv_project(), which stays a pure calculator.
   constrained <- reactive(rv_clamp_harm(entered()))
   gvals <- reactive(constrained()$groups)
-
-  # Read the derived cells from the CONSTRAINED frame, so what the grid shows is
-  # what the model used -- the display must never disagree with the computation.
-  kp <- which(GROUPS$id == "partial")
-  output$blend_h <- renderText(sprintf("%.4f", gvals()$risk_h[kp]))
-  output$blend_e <- renderText(sprintf("%.4f", gvals()$risk_e[kp]))
 
   scen_share <- reactive({
     vapply(seq_len(nrow(GROUPS)), function(i)
@@ -416,15 +358,9 @@ server <- function(input, output, session) {
     for (k in seq_len(nrow(GROUPS))) {
       updateNumericInput(session, paste0("cur_",  GROUPS$id[k]), value = GROUPS$share[k])
       updateNumericInput(session, paste0("scen_", GROUPS$id[k]), value = SCEN_DEFAULT[k])
-      # The partially vaccinated risks are derived, not inputs; restoring the
-      # weight below puts them back.
-      if (!identical(GROUPS$id[k], "partial")) {
-        updateNumericInput(session, paste0("rh_", GROUPS$id[k]), value = GROUPS$risk_h[k])
-        updateNumericInput(session, paste0("re_", GROUPS$id[k]), value = GROUPS$risk_e[k])
-      }
+      updateNumericInput(session, paste0("rh_", GROUPS$id[k]), value = GROUPS$risk_h[k])
+      updateNumericInput(session, paste0("re_", GROUPS$id[k]), value = GROUPS$risk_e[k])
     }
-    updateNumericInput(session, "w_partial1",
-      value = rv_partial_components()$w_default)
     for (i in seq_len(nrow(SCALARS))) {
       if (identical(SCALARS$widget[i], "slider")) {
         updateSliderInput(session, SCALARS$id[i], value = SCALARS$default[i])
@@ -451,20 +387,17 @@ server <- function(input, output, session) {
   # scalars as well as the grid: `rv_num()` reads a cleared box as 0, so a blank
   # cost silently zeroes a whole expenditure column and must be reported too.
   CELL_LABELS <- local({
-    prefixes <- c(cur = "pre-SCDM %", scen = "scenario %",
-                  rh = "hospitalization risk", re = "ED risk")
+    prefixes <- c(cur = "routine (pre-SCDM) %", scen = "SCDM scenario %",
+                  rh = "AGE-related hospitalization risk",
+                  re = "AGE-related ED visit risk")
     ids <- character(0); labs <- character(0)
     for (p in names(prefixes)) {
       for (k in seq_len(nrow(GROUPS))) {
-        # The partially vaccinated risk cells are derived, so there is no input
-        # to be left blank.
-        if (p %in% c("rh", "re") && identical(GROUPS$id[k], "partial")) next
         ids  <- c(ids,  paste0(p, "_", GROUPS$id[k]))
         labs <- c(labs, paste0(GROUPS$label[k], " — ", prefixes[[p]]))
       }
     }
-    stats::setNames(c(labs, SCALARS$label, "One dose, % of partially vaccinated"),
-                    c(ids, SCALARS$id, "w_partial1"))
+    stats::setNames(c(labs, SCALARS$label), c(ids, SCALARS$id))
   })
 
   output$warn <- renderUI({
@@ -568,7 +501,7 @@ server <- function(input, output, session) {
     # Row counts follow nrow(g) rather than a literal: the number of strata has
     # changed once already, and a hardcoded count fails only at render time.
     n <- nrow(g)
-    src <- function(base, blended) ifelse(g$id == "partial", blended, base)
+    src <- function(base, partial) ifelse(g$id == "partial", partial, base)
 
     rbind(
       data.frame(
@@ -579,14 +512,9 @@ server <- function(input, output, session) {
         Source = c(
           rep("Sederdahl et al. Pediatrics 2019", n),
           src("Butler et al. 2021, Table 1",
-              "Weighted average of the one- and two-dose RV5 levels, Butler et al. 2021 Table 1"),
+              "Butler et al. 2021 Table 1, one- and two-dose RV5 levels combined"),
           src("Butler et al. 2021, Table 2",
-              "Weighted average of the one- and two-dose RV5 levels, Butler et al. 2021 Table 2")),
-        check.names = FALSE, stringsAsFactors = FALSE),
-      data.frame(
-        Parameter = "One dose, % of partially vaccinated",
-        `Published value` = num(rv_partial_components()$w_default),
-        Source = "Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558)",
+              "Butler et al. 2021 Table 2, one- and two-dose RV5 levels combined")),
         check.names = FALSE, stringsAsFactors = FALSE),
       data.frame(
         Parameter = c("Risk difference, AGE-related hospitalization",

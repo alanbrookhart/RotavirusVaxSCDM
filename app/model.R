@@ -29,72 +29,43 @@
 # ------------------------------------------------------------------------------
 
 
-# --- Partially vaccinated: the two RV5 levels ---------------------------------
-# Butler et al. 2021 reports the partially vaccinated as two separate strata,
-# one dose and two doses of the three-dose RV5 series, with distinct risks. The
-# uptake source (Sederdahl et al. 2019) reports only a single lumped 15.3%, so
-# apportioning that 15.3% between the two levels requires an assumption.
-#
-# The app therefore carries ONE partially vaccinated stratum whose risks are the
-# share-weighted average of the two levels, with the weight exposed as a single
-# parameter. This is not an approximation: because the model is linear in the
-# stratum shares, a blended stratum reproduces the two-stratum result exactly,
-# for any weight. Verified in test-model.R.
-#
-# The weight has no effect at all on the projected excess. Both partial levels
-# are held fixed between the current and scenario columns, so their contribution
-# cancels in the difference; the weight moves only the baseline.
-#
-# Default weight is the person-time ratio in Butler et al. Table 1,
-# 162196/(162196+323558) = 33.3906%. That is the spreadsheet's assumption. It is
-# worth noting that person-time is not the same quantity as the share of
-# children: a child who remains permanently at one dose contributes one-dose
-# person-time across the whole of follow-up, whereas a child who completes the
-# series contributes only the interdose interval.
-
-rv_partial_components <- function() {
-  list(
-    one_dose  = c(hosp = 0.80, ed = 4.57),   # Butler Table 1/2, partial RV5 x1
-    two_doses = c(hosp = 0.61, ed = 4.23),   # Butler Table 1/2, partial RV5 x2
-    # Rounded to one decimal, which is also the sidebar input's step, so the
-    # registry default and the widget sit on the same grid. Written as the
-    # rounded quotient rather than the literal 33.4 to keep the derivation
-    # visible. Rounding moves the baseline by $2,170 (0.0004%) and cannot touch
-    # the excess at all, since the partially vaccinated are held fixed.
-    w_default = round(100 * 162196 / (162196 + 323558), 1)
-  )
-}
-
-
-#' Share-weighted risks for the combined partially vaccinated stratum
-#'
-#' @param w_pct Percent of the partially vaccinated who received one dose.
-#' @return Named numeric with `hosp` and `ed`, in percent.
-rv_blend_partial <- function(w_pct = rv_partial_components()$w_default) {
-  p <- rv_partial_components()
-  w <- w_pct / 100
-  c(hosp = w * p$one_dose[["hosp"]] + (1 - w) * p$two_doses[["hosp"]],
-    ed   = w * p$one_dose[["ed"]]   + (1 - w) * p$two_doses[["ed"]])
-}
-
-
 # --- Group registry -----------------------------------------------------------
 # One row per vaccination stratum. `share` and the risks are what the app puts
 # in the grid; the `_lo`/`_hi` columns are the published 95% confidence limits.
 #
+# Risks are the letter's own figures, per 10,000 converted to percent:
+# AGE-related hospitalization 88 / 67 / 47 and AGE-related ED visit 436 / 434 /
+# 315, for unvaccinated, partially vaccinated and fully vaccinated.
+#
+# On the partially vaccinated row: Butler et al. estimate that group as TWO
+# strata, one dose (0.80% hospitalization, 4.57% ED) and two doses (0.61%,
+# 4.23%), while the uptake source (Sederdahl et al. 2019) reports only a single
+# lumped 15.3%. The letter's 0.67% and 4.34% are the share-weighted average of
+# the two levels, taking 33.4% of the partially vaccinated as one-dose -- the
+# person-time ratio 162196/(162196+323558) from Butler Table 1.
+#
+# That weight is NOT exposed as a control, deliberately. Person-time in an
+# intermediate dose state is not the share of children who stop there: it is
+# accrued mostly by children passing through one dose on the way to completing
+# the series, so its relationship to the quantity we want is unclear in both
+# size and direction. Rather than offer a knob whose calibration we cannot
+# defend, the app takes the published figures as given. The assumption cannot
+# affect any excess estimate in any case -- both partial levels are held fixed
+# between the two columns, so their contribution cancels in the difference; it
+# moves only the baseline, by about 5% across the full range of the weight.
+#
 # The partially vaccinated row carries NA bounds deliberately. Its risk is a
 # mixture of two estimates, and averaging two confidence limits does not yield a
 # confidence limit for the mixture. The sensitivity analysis that matters uses
-# `rv_rd_bounds()` on the full-series contrast instead.
+# `rv_rd_bounds()` on the fully vaccinated contrast instead.
 
-rv_groups <- function(w_partial1 = rv_partial_components()$w_default) {
-  b <- rv_blend_partial(w_partial1)
+rv_groups <- function() {
   data.frame(
     id        = c("unvax", "partial", "full"),
     label     = c("Unvaccinated", "Partially vaccinated", "Fully vaccinated"),
     share     = c(13.9, 15.3, 70.7),
-    risk_h    = c(0.88, b[["hosp"]], 0.47),
-    risk_e    = c(4.36, b[["ed"]],   3.15),
+    risk_h    = c(0.88, 0.67, 0.47),
+    risk_e    = c(4.36, 4.34, 3.15),
     risk_h_lo = c(0.79, NA, 0.45),
     risk_h_hi = c(0.97, NA, 0.49),
     risk_e_lo = c(4.17, NA, 3.09),

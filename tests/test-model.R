@@ -38,9 +38,9 @@ b <- rv_project(g, g$share, sc, societal = TRUE)
 # The reproduction proof lives in the "Spreadsheet equivalence" block below,
 # which restores every rounded input and recovers all six cells exactly. If that
 # block passes and these fail, a default moved; if both fail, the model diverged.
-check("Hospitalizations, model default", b$baseline$hosp_total,  20201.813524, 0.001)
-check("ED visits, model default",        b$baseline$ed_total,   126708.591726, 0.001)
-check("Total expenditures, model default", b$baseline$cost_total, 550301444.52, 0.01)
+check("Hospitalizations, model default", b$baseline$hosp_total,  20182.635818, 0.001)
+check("ED visits, model default",        b$baseline$ed_total,   126688.859750, 0.001)
+check("Total expenditures, model default", b$baseline$cost_total, 549900307.21, 0.01)
 check("Zero excess when scenario equals current", b$excess$cost_total, 0, 1e-6)
 
 cat("\nPrefill scenario columns match spreadsheet rows J23-J26 / J31-J34 / J41-J44\n")
@@ -79,18 +79,24 @@ for (s in names(expected)) {
   check(sprintf("Excess expenditures, %s", s), r$excess$cost_total, e[["cost"]], 0.01)
 }
 
-cat("\nSpreadsheet equivalence: the whole-dollar rounding is the ONLY difference\n")
+cat("\nSpreadsheet equivalence: rounding is the ONLY difference\n")
 cat(strrep("-", 100), "\n")
 
-# Undo BOTH deliberate roundings -- the whole-dollar costs and the one-decimal
-# weight -- and the model must reproduce all six spreadsheet cells. It does so
-# exactly, which is the proof that those two roundings are the only thing
-# separating this model from the source.
+# Undo BOTH deliberate roundings -- the whole-dollar costs and the two-decimal
+# partially vaccinated risks -- and the model must reproduce all six spreadsheet
+# cells. It does so exactly, which is the proof that those roundings are the only
+# thing separating this model from the source.
 sc_x <- sc
 sc_x$c_hosp     <- 19251.56
 sc_x$c_ed       <- 781.83
 sc_x$c_indirect <- 1117 / 7 * 2 + 104.64
-g_x  <- rv_groups(100 * 162196 / (162196 + 323558))
+# The partially vaccinated risks the letter reports (0.67, 4.34) are the
+# share-weighted average of Butler's one- and two-dose levels, rounded to two
+# decimals. Restore the unrounded average to undo that rounding too.
+w_pt <- 162196 / (162196 + 323558)
+g_x  <- g
+g_x$risk_h[2] <- w_pt * 0.80 + (1 - w_pt) * 0.61
+g_x$risk_e[2] <- w_pt * 4.57 + (1 - w_pt) * 4.23
 b_x  <- rv_project(g_x, g_x$share, sc_x)
 
 check("Hospitalizations (xlsx K19)",   b_x$baseline$hosp_total,  20201.714152, 0.001)
@@ -132,65 +138,56 @@ cat(sprintf("  (actual relative shift: %.5f%%)\n", 100 * dev))
 cat("\nCombined partially vaccinated stratum\n")
 cat(strrep("-", 100), "\n")
 
-# The single blended stratum must reproduce the two-stratum model exactly, for
-# ANY weight -- the model is linear in the shares, so this is an identity, not
-# an approximation. Compare against an explicit four-row build.
-pc <- rv_partial_components()
-two_stratum <- function(w_pct, partial_share = 15.3) {
-  w <- w_pct / 100
-  data.frame(
-    id     = c("unvax", "p1", "p2", "full"),
-    label  = c("Unvaccinated", "Partial 1 dose", "Partial 2 doses", "Full series"),
-    share  = c(13.9, partial_share * w, partial_share * (1 - w), 70.7),
-    risk_h = c(0.88, pc$one_dose[["hosp"]], pc$two_doses[["hosp"]], 0.47),
-    risk_e = c(4.36, pc$one_dose[["ed"]],   pc$two_doses[["ed"]],   3.15),
-    stringsAsFactors = FALSE
-  )
-}
-for (w in c(0, 20, pc$w_default, 50, 100)) {
-  g1 <- rv_groups(w); g2 <- two_stratum(w)
+# The letter reports ONE partially vaccinated stratum. Its risks are the
+# share-weighted average of Butler's one- and two-dose RV5 levels at the
+# person-time split, rounded to two decimals -- check that provenance holds, so
+# a future edit to either level or to the weight shows up here.
+w_pt <- 162196 / (162196 + 323558)
+check("Partial hosp risk is the rounded weighted average",
+  g$risk_h[2], round(w_pt * 0.80 + (1 - w_pt) * 0.61, 2), 1e-12)
+check("Partial ED risk is the rounded weighted average",
+  g$risk_e[2], round(w_pt * 4.57 + (1 - w_pt) * 4.23, 2), 1e-12)
+check("Partial hosp risk matches the letter (67 per 10,000)", g$risk_h[2], 0.67, 1e-12)
+check("Partial ED risk matches the letter (434 per 10,000)", g$risk_e[2], 4.34, 1e-12)
+
+# Collapsing the two levels is an identity, not an approximation: the model is
+# linear in the shares, so a single stratum at the weighted average reproduces an
+# explicit two-stratum build exactly. Shown here at the person-time split, with
+# the unrounded average so the comparison isolates the collapse itself.
+two_stratum <- function(w) data.frame(
+  id     = c("unvax", "p1", "p2", "full"),
+  label  = c("Unvaccinated", "Partial 1 dose", "Partial 2 doses", "Fully vaccinated"),
+  share  = c(13.9, 15.3 * w, 15.3 * (1 - w), 70.7),
+  risk_h = c(0.88, 0.80, 0.61, 0.47),
+  risk_e = c(4.36, 4.57, 4.23, 3.15),
+  stringsAsFactors = FALSE)
+
+for (w in c(0, 0.2, w_pt, 0.5, 1)) {
+  g1 <- g
+  g1$risk_h[2] <- w * 0.80 + (1 - w) * 0.61
+  g1$risk_e[2] <- w * 4.57 + (1 - w) * 4.23
+  g2 <- two_stratum(w)
   s1 <- g1$share; s1[1] <- s1[1] + 30; s1[3] <- s1[3] - 30
   s2 <- g2$share; s2[1] <- s2[1] + 30; s2[4] <- s2[4] - 30
   r1 <- rv_project(g1, s1, sc); r2 <- rv_project(g2, s2, sc)
-  # Tolerance is one cent, not machine epsilon. These are ~$5.5e8 quantities
-  # summed in a different order by the two builds, so an exactly-equal result is
-  # not something floating point guarantees across R builds: 1 ulp here is
-  # already 1.2e-7. Agreement to the cent is the meaningful claim and is
-  # portable; a tighter bound tests the compiler, not the model.
-  check(sprintf("Blend == two strata at w=%.4f%% (baseline cost)", w),
+  # One cent, not machine epsilon: the two builds sum the same terms in a
+  # different order, and 1 ulp on ~$5.5e8 is already 1.2e-7.
+  check(sprintf("Combined == two strata at w=%.4f (baseline)", w),
     r1$baseline$cost_total, r2$baseline$cost_total, 0.01)
-  check(sprintf("Blend == two strata at w=%.4f%% (excess cost)", w),
+  check(sprintf("Combined == two strata at w=%.4f (excess)", w),
     r1$excess$cost_total, r2$excess$cost_total, 0.01)
 }
 
-# The weight moves the baseline but cannot move the excess, because the
-# partially vaccinated are held fixed between the two columns.
-exc <- vapply(c(0, 20, 50, 100), function(w) {
-  gg <- rv_groups(w); s <- gg$share; s[1] <- s[1] + 30; s[3] <- s[3] - 30
-  rv_project(gg, s, sc)$excess$cost_total
+# And the split cannot move the excess at all, which is why the app no longer
+# exposes it as a control.
+exc <- vapply(c(0, 0.2, 0.5, 1), function(w) {
+  gg <- g
+  gg$risk_h[2] <- w * 0.80 + (1 - w) * 0.61
+  gg$risk_e[2] <- w * 4.57 + (1 - w) * 4.23
+  v <- gg$share; v[1] <- v[1] + 30; v[3] <- v[3] - 30
+  rv_project(gg, v, sc)$excess$cost_total
 }, numeric(1))
-# One cent again. The partial stratum's contribution appears in both the
-# baseline and the scenario sum and cancels in the subtraction, but it cancels
-# arithmetically rather than symbolically -- changing the weight changes the
-# rounding of an intermediate. On ~$1e8 a single ulp is 2.3e-8, so a 1e-9 bound
-# would be asserting something below the resolution of a double.
-check("Weight has no effect on the excess", diff(range(exc)), 0, 0.01)
-base <- vapply(c(0, 100), function(w) rv_project(rv_groups(w), rv_groups(w)$share, sc)$baseline$cost_total, numeric(1))
-stopifnot(diff(base) != 0)
-cat(sprintf("Weight does move the baseline (w=0 vs w=100: %s vs %s): OK\n",
-  fmt_usd(base[1]), fmt_usd(base[2])))
-
-# The weight is the person-time ratio ROUNDED to one decimal, matching the
-# sidebar input's step so registry default and widget sit on the same grid.
-check("Default weight is the rounded person-time ratio",
-  pc$w_default, 33.4, 1e-12)
-check("...which is the Butler Table 1 ratio to one decimal",
-  pc$w_default, round(100 * 162196 / (162196 + 323558), 1), 1e-12)
-check("Rounding the weight moves the baseline under $5,000", abs(
-  rv_project(rv_groups(pc$w_default), rv_groups(pc$w_default)$share, sc)$baseline$cost_total -
-  rv_project(rv_groups(100 * 162196 / (162196 + 323558)),
-             rv_groups(100 * 162196 / (162196 + 323558))$share, sc)$baseline$cost_total) < 5000,
-  TRUE, 0)
+check("The partial split has no effect on the excess", diff(range(exc)), 0, 0.01)
 
 cat("\nNo-harm constraint\n")
 cat(strrep("-", 100), "\n")
@@ -218,25 +215,30 @@ check("Capped ED risk equals unvaccinated",   cl_bad$groups$risk_e[nrow(g)], g$r
 fixed <- rv_project(cl_bad$groups, scen[["30%"]], sc)
 check("Capped input yields exactly zero excess", fixed$excess$cost_total, 0, 1e-6)
 
-# The constraint binds on a published estimate once the one-dose weight rises:
-# the blended ED risk crosses 4.36 at w = (4.36 - 4.23)/0.34 = 38.235%.
-thresh <- (4.36 - 4.23) / 0.34 * 100
-check("Blend crosses the unvaccinated ED risk at w=38.24%",
-  rv_blend_partial(thresh)[["ed"]], 4.36, 1e-9)
-check("Just below the threshold, nothing is capped",
-  length(rv_clamp_harm(rv_groups(thresh - 0.5))$capped), 0, 0)
-check("Just above it, the partial ED risk is capped",
-  length(rv_clamp_harm(rv_groups(thresh + 0.5))$capped), 1, 0)
-check("Default weight sits below the threshold",
-  rv_partial_components()$w_default < thresh, TRUE, 0)
+# The partially vaccinated ED risk sits only 0.02 below the unvaccinated
+# reference -- 4.34 against 4.36. That margin is worth pinning: Butler's one-dose
+# level (4.57) is ABOVE the unvaccinated risk, so a partially vaccinated group
+# weighted more heavily towards one dose would cross the constraint. Asserted so
+# that any future edit to those risks makes the proximity visible.
+check("Partial ED risk sits below the unvaccinated reference",
+  g$risk_e[1] - g$risk_e[2], 0.02, 1e-12)
+check("Butler's one-dose ED level is itself above unvaccinated",
+  4.57 > g$risk_e[1], TRUE, 0)
+
+gp <- g; gp$risk_e[2] <- 4.57   # partially vaccinated weighted wholly to one dose
+check("A one-dose-only partial group would be capped",
+  length(rv_clamp_harm(gp)$capped), 1, 0)
 
 # Capping never raises a risk, and never touches the unvaccinated row.
-for (w in c(0, 50, 100)) {
-  cc <- rv_clamp_harm(rv_groups(w))
-  stopifnot(all(cc$groups$risk_h <= rv_groups(w)$risk_h + 1e-12),
-            all(cc$groups$risk_e <= rv_groups(w)$risk_e + 1e-12),
-            identical(cc$groups$risk_h[1], rv_groups(w)$risk_h[1]),
-            identical(cc$groups$risk_e[1], rv_groups(w)$risk_e[1]))
+for (bump in list(c(0, 0), c(1, 0), c(0, 1), c(2, 2))) {
+  gg <- g
+  gg$risk_h[2:3] <- gg$risk_h[2:3] + bump[1]
+  gg$risk_e[2:3] <- gg$risk_e[2:3] + bump[2]
+  cc <- rv_clamp_harm(gg)
+  stopifnot(all(cc$groups$risk_h <= gg$risk_h + 1e-12),
+            all(cc$groups$risk_e <= gg$risk_e + 1e-12),
+            identical(cc$groups$risk_h[1], gg$risk_h[1]),
+            identical(cc$groups$risk_e[1], gg$risk_e[1]))
 }
 cat("Capping is monotone and leaves the unvaccinated reference alone: OK\n")
 
@@ -289,12 +291,30 @@ check("Excess scales linearly with the RD", e_lo$hosp / e_hi$hosp, 0.50 / 0.31, 
 cat("\nRelative excess -- Figure 2 footnotes b, c, d (xlsx sheet 'Monica')\n")
 cat(strrep("-", 100), "\n")
 
-r10 <- rv_project(g, scen[["10%"]], sc, societal = TRUE)
-r30 <- rv_project(g, scen[["30%"]], sc, societal = TRUE)
-check("Relative excess hosp., 10% (Monica C9)", r10$excess$pct_hosp,  7.352326, 0.001)
-check("Relative excess ED,    10% (Monica B9)", r10$excess$pct_ed,    3.459466, 0.001)
-check("Relative excess cost,  10% (Monica D9)", r10$excess$pct_cost,  6.271558, 0.001)
-check("Relative excess cost,  30% (Monica D11)", r30$excess$pct_cost, 18.814675, 0.001)
+# Asserted against the spreadsheet with every rounding undone, so these remain a
+# genuine check on the Monica sheet rather than on this model's roundings.
+x10 <- rv_project(g_x, scen[["10%"]], sc_x)$excess
+x30 <- rv_project(g_x, scen[["30%"]], sc_x)$excess
+check("Relative excess hosp., 10% (Monica C9)", x10$pct_hosp,  7.352326, 0.001)
+check("Relative excess ED,    10% (Monica B9)", x10$pct_ed,    3.459466, 0.001)
+check("Relative excess cost,  10% (Monica D9)", x10$pct_cost,  6.271558, 0.001)
+check("Relative excess cost,  30% (Monica D11)", x30$pct_cost, 18.814675, 0.001)
+
+# The model's own figures, which the rounding shifts by under 0.03 percentage
+# points -- still 7.4 / 3.5 / 6.3 and 18.8 as the letter reports them.
+r10 <- rv_project(g, scen[["10%"]], sc)$excess
+r30 <- rv_project(g, scen[["30%"]], sc)$excess
+check("Model relative excess hosp., 10%", r10$pct_hosp, 7.359276, 0.001)
+check("Model relative excess ED,   10%", r10$pct_ed,   3.460000, 0.001)
+check("Model relative excess cost, 10%", r10$pct_cost, 6.275884, 0.001)
+check("Model relative excess cost, 30%", r30$pct_cost, 18.827652, 0.001)
+for (nm in c("hosp10", "ed10", "cost10", "cost30")) {
+  pair <- switch(nm,
+    hosp10 = c(r10$pct_hosp, x10$pct_hosp), ed10 = c(r10$pct_ed, x10$pct_ed),
+    cost10 = c(r10$pct_cost, x10$pct_cost), cost30 = c(r30$pct_cost, x30$pct_cost))
+  check(sprintf("%s rounds the same either way", nm),
+    round(pair[1], 1), round(pair[2], 1), 1e-9)
+}
 
 cat("\nCost perspective reconciliation with the published letter\n")
 cat(strrep("-", 100), "\n")
