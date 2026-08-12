@@ -296,10 +296,7 @@ data support gives the smallest projected excess.
 
 Because the scenario moves children between these two strata alone, the projected
 excess is proportional to that risk difference, so these bounds carry directly
-through to the projection. Note that they also change the baseline, since most of
-the cohort is fully vaccinated, and that setting the hospitalization and ED limits
-together assumes both err in the same direction -- they bracket the projection
-rather than forming a 95% interval around it.
+through to the projection.
 
 Estimates account for direct effects of vaccination only. No indirect (herd)
 protection is assumed, so projected excess encounters should be read as a lower
