@@ -28,8 +28,8 @@ cat(strrep("-", 100), "\n")
 # totals are the spreadsheet's current-uptake figures.
 b <- rv_project(g, g$share, sc, societal = TRUE)
 
-# These are the MODEL's own figures, not the spreadsheet's. Two roundings are
-# deliberate and both move the baseline slightly: the three cost inputs are whole
+# These are the MODEL's own figures, not the spreadsheet's. Three deliberate
+# departures move the baseline; none can touch the excess: the three cost inputs are whole
 # dollars where the spreadsheet carries Karve's cents and an unrounded 1117/7
 # intermediate, and the one-dose weight is the person-time ratio to one decimal.
 # The weight moves the counts as well as the cost -- by 0.10 of a hospitalization
@@ -38,9 +38,10 @@ b <- rv_project(g, g$share, sc, societal = TRUE)
 # The reproduction proof lives in the "Spreadsheet equivalence" block below,
 # which restores every rounded input and recovers all six cells exactly. If that
 # block passes and these fail, a default moved; if both fail, the model diverged.
-check("Hospitalizations, model default", b$baseline$hosp_total,  20182.635818, 0.001)
-check("ED visits, model default",        b$baseline$ed_total,   126688.859750, 0.001)
-check("Total expenditures, model default", b$baseline$cost_total, 549900307.21, 0.01)
+check("Hospitalizations, model default", b$baseline$hosp_total,  20206.907727, 0.001)
+check("ED visits, model default",        b$baseline$ed_total,   126846.083759, 0.001)
+check("Total expenditures, model default", b$baseline$cost_total, 550567493.44, 0.01)
+check("Shares sum to 100%", sum(g$share), 100, 1e-9)
 check("Zero excess when scenario equals current", b$excess$cost_total, 0, 1e-6)
 
 cat("\nPrefill scenario columns match spreadsheet rows J23-J26 / J31-J34 / J41-J44\n")
@@ -49,9 +50,9 @@ cat(strrep("-", 100), "\n")
 # Guards the prefill constants against drift. The partially vaccinated stratum
 # is held fixed.
 prefill <- list(
-  "10%" = c(23.9, 15.3, 60.7),
-  "20%" = c(33.9, 15.3, 50.7),
-  "30%" = c(43.9, 15.3, 40.7)
+  "10%" = c(23.9, 15.4, 60.7),
+  "20%" = c(33.9, 15.4, 50.7),
+  "30%" = c(43.9, 15.4, 40.7)
 )
 for (s in names(prefill)) {
   for (k in seq_len(3)) {
@@ -97,6 +98,15 @@ w_pt <- 162196 / (162196 + 323558)
 g_x  <- g
 g_x$risk_h[2] <- w_pt * 0.80 + (1 - w_pt) * 0.61
 g_x$risk_e[2] <- w_pt * 4.57 + (1 - w_pt) * 4.23
+# And restore Sederdahl's rounded 15.3, which the app carries as 15.4 so the
+# distribution totals 100%. The spreadsheet uses 15.3 and therefore sums to 99.9.
+g_x$share[2] <- 15.3
+# Scenario columns must be built from g_x too. If the baseline carried 15.3 and
+# the scenario 15.4 the partially vaccinated stratum would stop cancelling and
+# would leak into the excess.
+scen_x <- lapply(c("10%" = 10, "20%" = 20, "30%" = 30), function(sh) {
+  v <- g_x$share; v[1] <- v[1] + sh; v[3] <- v[3] - sh; v
+})
 b_x  <- rv_project(g_x, g_x$share, sc_x)
 
 check("Hospitalizations (xlsx K19)",   b_x$baseline$hosp_total,  20201.714152, 0.001)
@@ -105,7 +115,7 @@ check("Baseline expenditures (xlsx W23)", b_x$baseline$cost_total, 550236945.15,
 xls <- c("10%" = 34508431.45, "20%" = 69016862.91, "30%" = 103525294.36)
 for (s in names(xls)) {
   check(sprintf("Excess expenditures, %s (xlsx X2%s)", s, substr(s, 1, 1)),
-    rv_project(g_x, scen[[s]], sc_x)$excess$cost_total, xls[[s]], 1)
+    rv_project(g_x, scen_x[[s]], sc_x)$excess$cost_total, xls[[s]], 1)
 }
 
 # The rounding must stay below reporting precision. Asserted on what the letter
@@ -114,7 +124,7 @@ for (s in names(xls)) {
 # whether the published figures still hold.
 for (s in c("10%", "30%")) {
   rounded <- fmt_usd_short(rv_project(g, scen[[s]], sc)$excess$cost_total)
-  exact   <- fmt_usd_short(rv_project(g_x, scen[[s]], sc_x)$excess$cost_total)
+  exact   <- fmt_usd_short(rv_project(g_x, scen_x[[s]], sc_x)$excess$cost_total)
   if (!identical(rounded, exact)) {
     stop(sprintf("Rounding changed the reported %s figure: %s vs %s", s, rounded, exact))
   }
@@ -124,14 +134,14 @@ for (s in c("10%", "30%")) {
 # Footnote d's percentages must still round to the published 6.3% and 18.8%.
 for (s in c("10%", "30%")) {
   pr <- rv_project(g, scen[[s]], sc)$excess$pct_cost
-  px <- rv_project(g_x, scen[[s]], sc_x)$excess$pct_cost
+  px <- rv_project(g_x, scen_x[[s]], sc_x)$excess$pct_cost
   check(sprintf("Footnote d %s, whole-dollar vs exact costs", s), round(pr, 1), round(px, 1), 1e-9)
 }
 
 # Relative size of the rounding, so a future change that inflates it is visible
 # in the output rather than silently absorbed.
 dev <- abs(rv_project(g, scen[["30%"]], sc)$excess$cost_total /
-           rv_project(g_x, scen[["30%"]], sc_x)$excess$cost_total - 1)
+           rv_project(g_x, scen_x[["30%"]], sc_x)$excess$cost_total - 1)
 check("Rounding shifts the 30% excess by under 0.05%", dev < 5e-4, TRUE, 0)
 cat(sprintf("  (actual relative shift: %.5f%%)\n", 100 * dev))
 
@@ -154,10 +164,11 @@ check("Partial ED risk matches the letter (434 per 10,000)", g$risk_e[2], 4.34, 
 # linear in the shares, so a single stratum at the weighted average reproduces an
 # explicit two-stratum build exactly. Shown here at the person-time split, with
 # the unrounded average so the comparison isolates the collapse itself.
+ps <- g$share[2]   # partially vaccinated share, read from the registry
 two_stratum <- function(w) data.frame(
   id     = c("unvax", "p1", "p2", "full"),
   label  = c("Unvaccinated", "Partial 1 dose", "Partial 2 doses", "Fully vaccinated"),
-  share  = c(13.9, 15.3 * w, 15.3 * (1 - w), 70.7),
+  share  = c(g$share[1], ps * w, ps * (1 - w), g$share[3]),
   risk_h = c(0.88, 0.80, 0.61, 0.47),
   risk_e = c(4.36, 4.57, 4.23, 3.15),
   stringsAsFactors = FALSE)
@@ -293,8 +304,8 @@ cat(strrep("-", 100), "\n")
 
 # Asserted against the spreadsheet with every rounding undone, so these remain a
 # genuine check on the Monica sheet rather than on this model's roundings.
-x10 <- rv_project(g_x, scen[["10%"]], sc_x)$excess
-x30 <- rv_project(g_x, scen[["30%"]], sc_x)$excess
+x10 <- rv_project(g_x, scen_x[["10%"]], sc_x)$excess
+x30 <- rv_project(g_x, scen_x[["30%"]], sc_x)$excess
 check("Relative excess hosp., 10% (Monica C9)", x10$pct_hosp,  7.352326, 0.001)
 check("Relative excess ED,    10% (Monica B9)", x10$pct_ed,    3.459466, 0.001)
 check("Relative excess cost,  10% (Monica D9)", x10$pct_cost,  6.271558, 0.001)
@@ -304,10 +315,10 @@ check("Relative excess cost,  30% (Monica D11)", x30$pct_cost, 18.814675, 0.001)
 # points -- still 7.4 / 3.5 / 6.3 and 18.8 as the letter reports them.
 r10 <- rv_project(g, scen[["10%"]], sc)$excess
 r30 <- rv_project(g, scen[["30%"]], sc)$excess
-check("Model relative excess hosp., 10%", r10$pct_hosp, 7.359276, 0.001)
-check("Model relative excess ED,   10%", r10$pct_ed,   3.460000, 0.001)
-check("Model relative excess cost, 10%", r10$pct_cost, 6.275884, 0.001)
-check("Model relative excess cost, 30%", r30$pct_cost, 18.827652, 0.001)
+check("Model relative excess hosp., 10%", r10$pct_hosp, 7.350437, 0.001)
+check("Model relative excess ED,   10%", r10$pct_ed,   3.455711, 0.001)
+check("Model relative excess cost, 10%", r10$pct_cost, 6.268279, 0.001)
+check("Model relative excess cost, 30%", r30$pct_cost, 18.804836, 0.001)
 for (nm in c("hosp10", "ed10", "cost10", "cost30")) {
   pair <- switch(nm,
     hosp10 = c(r10$pct_hosp, x10$pct_hosp), ed10 = c(r10$pct_ed, x10$pct_ed),

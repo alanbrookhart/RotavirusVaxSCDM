@@ -63,7 +63,13 @@ rv_groups <- function() {
   data.frame(
     id        = c("unvax", "partial", "full"),
     label     = c("Unvaccinated", "Partially vaccinated", "Fully vaccinated"),
-    share     = c(13.9, 15.3, 70.7),
+    # Sederdahl's rounded shares are 13.9 / 15.3 / 70.7, which sum to 99.9%.
+    # The partially vaccinated share carries the 0.1 correction so the
+    # distribution totals 100%. That group is held fixed between the two uptake
+    # columns, so the correction cannot touch any excess estimate; it lands
+    # entirely in the baseline, and it leaves every percentage the letter
+    # reports unchanged at one decimal.
+    share     = c(13.9, 15.4, 70.7),
     risk_h    = c(0.88, 0.67, 0.47),
     risk_e    = c(4.36, 4.34, 3.15),
     risk_h_lo = c(0.79, NA, 0.45),
