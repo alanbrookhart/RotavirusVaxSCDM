@@ -81,7 +81,7 @@ group_grid <- function() {
   tags$table(class = "table grid-table align-middle mb-1",
     tags$thead(tags$tr(
       tags$th("Vaccination group", style = "width: 30%;"),
-      tags$th("Pre-SCDM %"), tags$th("Scenario %"),
+      tags$th("Routine (pre-SCDM) %"), tags$th("SCDM Scenario"),
       tags$th("Hosp. risk %"), tags$th("ED risk %")
     )),
     tags$tbody(rows),
@@ -100,9 +100,9 @@ group_grid <- function() {
 rd_tooltip <- function(bound, note) {
   a <- rv_apply_rd(GROUPS, RD_BOUNDS[[bound]])
   n <- nrow(GROUPS)
-  sprintf(paste("Assumed two-year risks -- full series %.2f%% hospitalization",
-                "and %.2f%% ED visits, against %.2f%% and %.2f%% in the",
-                "unvaccinated. %s"),
+  sprintf(paste("Assumed two-year risks -- fully vaccinated %.2f%%",
+                "AGE-related hospitalization and %.2f%% AGE-related ED visits,",
+                "against %.2f%% and %.2f%% in the unvaccinated. %s"),
     a$risk_h[n], a$risk_e[n], a$risk_h[1], a$risk_e[1], note)
 }
 
@@ -196,7 +196,7 @@ ui <- page_navbar(
       card_body(
         div(id = "grid-wrap", group_grid()),
         div(class = "d-flex gap-2 align-items-center mt-2 flex-wrap",
-          span(class = "small text-muted me-1", "Hypothetical Effect of SDM:"),
+          span(class = "small text-muted me-1", "Hypothetical Effect of SCDM Recommendation:"),
           actionButton("fill_10", "10%", class = "btn-outline-primary btn-sm"),
           actionButton("fill_20", "20%", class = "btn-outline-primary btn-sm"),
           actionButton("fill_30", "30%", class = "btn-outline-primary btn-sm")
@@ -235,9 +235,9 @@ ui <- page_navbar(
     uiOutput("warn"),
     layout_columns(
       col_widths = c(4, 4, 4),
-      value_box("Excess hospitalizations", textOutput("vb_hosp"), theme = "primary"),
-      value_box("Excess ED visits", textOutput("vb_ed"), theme = "secondary"),
-      value_box("Excess expenditures", textOutput("vb_cost"), theme = "danger")
+      value_box("Excess AGE-related hospitalizations", textOutput("vb_hosp"), theme = "primary"),
+      value_box("Excess AGE-related ED visits", textOutput("vb_ed"), theme = "secondary"),
+      value_box("Excess AGE-related expenditures", textOutput("vb_cost"), theme = "danger")
     ),
     card(
       card_header("Encounters per annual birth cohort, to age 2 years"),
@@ -275,9 +275,9 @@ Unit costs are per-episode costs in January 2025 USD; the societal perspective
 adds an indirect cost, applied identically to inpatient and ED episodes,
 representing two days of median weekly earnings plus out-of-pocket costs.
 
-The Pre-SCDM and Scenario columns are entered directly. Any pair of distributions
-can be compared; the 10%, 20% and 30% buttons fill the Scenario column with the
-published scenarios, which move that many percentage points from the fully
+The Routine (pre-SCDM) and SCDM Scenario columns are entered directly. Any pair of distributions
+can be compared; the 10%, 20% and 30% buttons fill the SCDM Scenario column with
+the published scenarios, which move that many percentage points from the fully
 vaccinated stratum into the unvaccinated one while holding the partially
 vaccinated stratum fixed.
 
@@ -287,7 +287,7 @@ carries the share-weighted average of the two, using the proportion set under
 *Composition of the partially vaccinated* in the sidebar. Its two risk cells are
 therefore displayed rather than edited.
 
-The three vaccine effectiveness buttons set the full-series risks so that the
+The three vaccine effectiveness buttons set the fully vaccinated risks so that the
 risk difference against unvaccinated equals the upper confidence limit (Most
 Conservative), the point estimate (Best Estimate), or the lower confidence limit
 (Least Conservative) reported by Butler et al. Conservative here means the
@@ -517,7 +517,7 @@ server <- function(input, output, session) {
     r <- res()
     m <- rbind(
       Baseline = c(r$baseline$hosp_total, r$baseline$ed_total),
-      Scenario = c(r$scenario$hosp_total, r$scenario$ed_total)
+      `SCDM Scenario` = c(r$scenario$hosp_total, r$scenario$ed_total)
     )
     op <- par(mfrow = c(1, 2), mar = c(4, 5, 3, 1), las = 1, bty = "n",
               col.axis = PAL$text, col.lab = PAL$text)
@@ -555,8 +555,10 @@ server <- function(input, output, session) {
     r <- res()
     data.frame(
       Quantity = c("AGE-related hospitalizations", "AGE-related ED visits",
-        "Hospitalization expenditures", "ED expenditures", "Total expenditures",
-        "Unit cost per hospitalization", "Unit cost per ED visit"),
+        "AGE-related hospitalization expenditures", "AGE-related ED expenditures",
+        "Total AGE-related expenditures",
+        "Unit cost per AGE-related hospitalization",
+        "Unit cost per AGE-related ED visit"),
       Baseline = c(fmt_n(r$baseline$hosp_total), fmt_n(r$baseline$ed_total),
         fmt_usd(r$baseline$cost_hosp), fmt_usd(r$baseline$cost_ed),
         fmt_usd(r$baseline$cost_total), fmt_usd(r$unit_cost_hosp), fmt_usd(r$unit_cost_ed)),
@@ -587,9 +589,9 @@ server <- function(input, output, session) {
 
     rbind(
       data.frame(
-        Parameter = c(paste("Share,", g$label),
-                      paste("Hospitalization risk,", g$label),
-                      paste("ED visit risk,", g$label)),
+        Parameter = c(paste0(g$label, ", %"),
+                      paste("AGE-related hospitalization risk,", g$label),
+                      paste("AGE-related ED visit risk,", g$label)),
         `Published value` = num(c(g$share, g$risk_h, g$risk_e)),
         Source = c(
           rep("Sederdahl et al. Pediatrics 2019", n),
@@ -604,7 +606,8 @@ server <- function(input, output, session) {
         Source = "Person-time ratio in Butler et al. 2021 Table 1, 162196/(162196+323558)",
         check.names = FALSE, stringsAsFactors = FALSE),
       data.frame(
-        Parameter = c("Risk difference, hospitalization", "Risk difference, ED visit"),
+        Parameter = c("Risk difference, AGE-related hospitalization",
+                      "Risk difference, AGE-related ED visit"),
         `Published value` = c("-0.40 (-0.50, -0.31)", "-1.22 (-1.43, -1.00)"),
         Source = rep(paste("Butler et al. 2021, Table 1 and Table 2;",
                            "sets the vaccine effectiveness buttons"), 2),

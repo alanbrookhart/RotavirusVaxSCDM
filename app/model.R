@@ -91,7 +91,7 @@ rv_groups <- function(w_partial1 = rv_partial_components()$w_default) {
   b <- rv_blend_partial(w_partial1)
   data.frame(
     id        = c("unvax", "partial", "full"),
-    label     = c("Unvaccinated", "Partially vaccinated", "Full series"),
+    label     = c("Unvaccinated", "Partially vaccinated", "Fully vaccinated"),
     share     = c(13.9, 15.3, 70.7),
     risk_h    = c(0.88, b[["hosp"]], 0.47),
     risk_e    = c(4.36, b[["ed"]],   3.15),
@@ -134,11 +134,11 @@ rv_scalars <- function() {
     # moves: both printed figures stay $34.5M and $103.5M, and footnote d stays
     # 6.3% and 18.8%. The Spreadsheet equivalence block in test-model.R restores
     # all three unrounded values and confirms the cells still reproduce.
-    s("c_hosp", "Direct medical cost per hospitalization ($)",
+    s("c_hosp", "Direct medical cost per AGE-related hospitalization ($)",
       19252, 0, 60000, 1, 14439, 24064,
       "Karve et al. 2014, CPI-inflated to Jan 2025 ($19,251.56), to the dollar",
       "slider"),
-    s("c_ed", "Direct medical cost per ED visit ($)",
+    s("c_ed", "Direct medical cost per AGE-related ED visit ($)",
       782, 0, 4000, 1, 586, 977,
       "Karve et al. 2014, CPI-inflated to Jan 2025 ($781.83), to the dollar",
       "slider"),
