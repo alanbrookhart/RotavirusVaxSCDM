@@ -314,20 +314,6 @@ AGE-coded encounters, which have imperfect sensitivity."
     card(
       card_header("Parameter sources"),
       tableOutput("tbl_sources")
-    ),
-    card(
-      card_header("Reproducibility check"),
-      card_body(
-        markdown(
-"At published values with the 10% scenario, the app reproduces the accompanying
-spreadsheet: 20,202 baseline hospitalizations and 126,708 baseline ED visits, and
-an excess of 1,485 hospitalizations and 4,383 ED visits.
-
-Costs are reported from a societal perspective by default, combining direct
-medical costs with indirect costs. The cost perspective control in the sidebar
-switches to direct medical costs alone."
-        )
-      )
     )
   ),
 
